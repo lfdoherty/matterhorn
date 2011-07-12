@@ -1,6 +1,16 @@
 {
 	"name": "matterhorn",
-	"version": "0.1",
+	"version": "0.1.4",
 	"description": "Formalizes a way of building web applications atop the express framework.",
+	"author": "Liam Doherty",
 	"main": "matterhorn",
+	"dependencies": {
+		"dust": "*",
+		"stylus": "*",
+		"express": "*",
+		"underscore": "*",
+		"matterhorn-standard": "*",
+		"uglify-js": ">=1.0.2",
+		"gzip": ">=0.1.0"
+	}
 }
