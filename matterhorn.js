@@ -1,26 +1,20 @@
 
-var sys = require('sys'),
+var sys = require('util'),
 	fs = require('fs'),
 	crypto = require('crypto');
 
 var _ = require('underscorem');
 
-var dust = require('dust');
+var uglify = require('uglify-js');
 var stylus = require('stylus');
 
-var uglify = require('uglify-js');
-var gzip = require('gzip');
+var zlib = require('zlib');
 
-function removeHashPadding(hash){
-	return hash.replace(/=/gi,'').replace(/\+/gi,'-').replace(/\//gi,'_');
-}
-function hash(str){
-	var hash = crypto.createHash('md5');
-	hash.update(str);
-	var h = hash.digest('base64');
-	h = removeHashPadding(h);
-	return h;
-}
+var changedetector = require('./changedetector');
+var files = require('./files');
+
+var random = require('seedrandom');
+
 function getMimeType(type){
 	if(type === 'js') return 'text/javascript';
 	else if(type === 'css') return 'text/css';
@@ -30,47 +24,15 @@ function getMimeType(type){
 	}
 }
 
-
-function extendContext(a, withB){
-	if(withB.js){
-		for(var i=0;i<withB.js.length;++i){
-			var j = withB.js[i];
-			if(a.js.indexOf(j) === -1) a.js.push(j);
-		}
-	}
-	if(withB.css){
-		for(var i=0;i<withB.css.length;++i){
-			var j = withB.css[i];
-			if(a.css.indexOf(j) === -1) a.css.push(j);
-		}
-	}
-	if(withB.models){
-		for(var i=0;i<withB.models.length;++i){
-			var j = withB.models[i];
-			if(a.models.indexOf(j) === -1) a.models.push(j);
-		}
-	}
-}
-function doInclude(a,withB){
-	if(withB.include){		
-		for(var i=0;i<withB.include.length;++i){
-			var fragment = withB.include[i];
-			extendContext(a, fragment);	
-			if(fragment.include){
-				doInclude(a,fragment);
-			}			
-		}
-	}
-}
-
 var apps = {};
 var claimed = {};
 var secureApps = {};
+
 var claimedSecure = {};
 getApplication = function(moduleName){
 	return apps[moduleName];
 }
-var methods = ['get', 'post', 'js', 'css', 'template', 'page'];
+var methods = ['get', 'post', 'js', 'css','page', 'imagery', 'stub', 'serveJavascript', 'serveJavascriptFile'];
 
 function Facade(secure){
 	this.secure = secure;
@@ -85,6 +47,9 @@ function Facade(secure){
 _.each(methods, function(m){
 	var key = m+'__s';
 	Facade.prototype[m] = function(app){
+		if(app.name === undefined){
+			_.errout('first parameter of ' + m + '(...) call must be a module with "name" and "dir" properties.');
+		}
 		_.assertString(app.name);
 		var c = claimed;
 		var a = apps;
@@ -93,8 +58,15 @@ _.each(methods, function(m){
 			c = claimedSecure;
 		}
 		if(a[app.name] !== undefined && a[app.name] !== app){
-			//console.log(c[app.name]);
-			//_.errout('(' + (this.secure ? 'secure' : 'normal') + ') naming conflict, name already taken: ' + app.name);
+			if(app.requirements && app.requirements.length > 0){
+				var otherApp = a[app.name];
+				otherApp.requirements = otherApp.requirements || [];
+				_.each(app.requirements, function(req){
+					if(otherApp.requirements.indexOf(req) === -1){
+						otherApp.requirements.push(req);
+					}
+				});
+			}
 		}else{
 			a[app.name] = app;
 			c[app.name] = new Error().stack;
@@ -104,6 +76,63 @@ _.each(methods, function(m){
 	}
 });
 
+exports.do304IfSafe = function(req, res){
+
+	var chromeException = (req.header('User-Agent') && req.header('User-Agent').indexOf('Chrome')) !== -1 && 
+		req.header('Cache-Control') === 'max-age=0';
+	
+	if((req.header('Cache-Control') !== undefined && !chromeException) || req.header('Expires') !== undefined){
+		res.header('Content-Type', '');
+		res.send(304);
+		return true;
+	}
+}
+function serveFile(req, res, type, content, gzippedContent){
+	_.assertLength(arguments, 5);
+	
+	if(exports.do304IfSafe(req, res)){
+		return;
+	}
+	/*
+	//this bit here is to work around a Chrome bug
+	var chromeException = 
+		(req.header('User-Agent') && req.header('User-Agent').indexOf('Chrome')) !== -1 && 
+		req.header('Cache-Control') === 'max-age=0';
+	
+	if((req.header('Cache-Control') !== undefined && !chromeException) || req.header('Expires') !== undefined){
+		//console.log('headers: ' + JSON.stringify(req.headers));
+		res.header('Content-Type', '');
+		res.send(304);
+	}else{
+*/
+		var headers = {
+			'Cache-Control': 'public max-age=2592000', 
+			'Expires': 'Sat, 28 Apr 2100 10:00:00 GMT',
+			'Content-Type': getMimeType(type) + ';charset=utf-8'};
+
+		var fileContents;
+
+		var compHeader = req.header('Accept-Encoding');
+		if(compHeader && compHeader.indexOf('gzip') !== -1 && gzippedContent !== undefined){
+			fileContents = gzippedContent;
+			headers['Content-Encoding'] = 'gzip';
+		}else{
+			fileContents = content
+		}
+		
+		if(fileContents === undefined){
+			_.errout('file contents missing for ' + path);
+		}
+		//console.log('looking for file: ' + app.name + ':' + name);
+	/*	
+		
+		if(chromeException){
+			headers['Warning'] = 'Working around Chrome 304 bug';
+		}*/
+		res.send(fileContents, headers);
+	//}
+}
+		
 app = new Facade();
 secureApp = new Facade(true);
 
@@ -124,60 +153,27 @@ function prepare(config, cb){
 	var hostName = config.host;
 	var envType = config.env;
 
-	var hashes = {
-		js: {},
-		css: {},
-		template: {}
-	};
+	InDebugEnvironment = config.env === 'development';
 
-	var content = {
-		js: {}, 
-		css: {},
-		template: {}
-	};
-	
-	var gzipped = {
-		js: {}, 
-		css: {}
-	};
 	var generators = {
 		imagery: {}
 	};
-	
-	var serverStateId;
-	
-	function resetServerStateId(){
-		serverStateId = ''+Math.floor(Math.random()*1000*1000);
-		console.log('server state uid: ' + serverStateId);
-	}
-	resetServerStateId();
-	
-	function dustTransform(templateContent, templateName, cb){
-		var templateDustName = templateName.substr(0, templateName.lastIndexOf('.'));
-		var compiled = dust.compile(templateContent, templateDustName);
-		dust.loadSource(compiled);
-		cb(compiled);
-	}
-	
-	function jsTransform(jsContent, jsName, cb){
-		
-		if(envType === 'production'){
-		
-			var minStr = uglify(jsContent);
-			cb(minStr);
-		}else{
-			cb(jsContent);
-		}
-	}
-	
-	function imageryImportFunction(a, b, c, d, e, f, g, h, i){
-	
+
+	function imageryImportFunction(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p){
+
+		//console.log('*args: ' + JSON.stringify(arguments));
+
 		var args = Array.prototype.slice.call(arguments);
-	
+
+		//console.log('args: ' + JSON.stringify(args));
+
+		var moduleName = args.shift();
+		var cssName = args.shift();
+
 		var argValues = [];
 		
-		//sys.debug(sys.inspect(args));
-		
+		//console.log('args: ' + JSON.stringify(args));
+
 		_.each(args, function(arg){
 			if(arg.string !== undefined){
 				argValues.push(arg.string);
@@ -192,41 +188,32 @@ function prepare(config, cb){
 			}
 		});
 		
+
 		var name = argValues[0];
 		var params = argValues.slice(1);
-	
-		sys.debug('imagery name(' + name + ')');
 
 		//calling the imagery function sets up the get endpoint with the generator defined by params,
 		//and returns the url path of the endpoint.
-		
+
 		var genFunction = generators.imagery[name];
-		
+
 		if(genFunction === undefined){
-			_.errout('no imagery generator defined called ' + name);
+			_.errout('no imagery generator defined called ' + name + ', error in ' + moduleName + ':' + cssName + '.css');
 		}
-		
-		console.log('params: ' + JSON.stringify(params));
-		
-		var url = genFunction(params);
-		
+
+		var url = (config.prefix || '') + genFunction(params);
+
 		return new stylus.nodes.String(url);
 	}
+	//imageryImportFunction.raw = true;
 	
-	function stylusTransform(content, name, cb){
-		stylus(content).set('filename', name).define('imagery', imageryImportFunction).render(function(err, css){
-
-			if (err) throw err;
-
-			cb(css);
-		});
+	var serverStateId;
+	
+	function resetServerStateId(){
+		serverStateId = ''+Math.floor(Math.random()*1000*1000);
+		console.log('server state uid: ' + serverStateId);
 	}
-	
-	var transforms = {
-		css: stylusTransform,
-		template: dustTransform,
-		js: jsTransform
-	};
+	resetServerStateId();
 
 	/*
 	30    black foreground
@@ -261,287 +248,41 @@ function prepare(config, cb){
 
 	console.log('\n\nLoading matterhorn app as main application: ' + colourize(appName, purple) + '\n');
 
-	function findFile(type, fileIdent, app, cb){
-
-		if(app.dir === undefined){
-			_.errout('no directory defined for app: ' + sys.inspect(app));
-		}
-
-		var typeDir = app.dir + '/' + type;
-
-		var fullPath = typeDir + '/' + fileIdent;
-		
-		fs.readFile(fullPath, 'utf8', processFile);
-		
-		function processFile(err, str){
-			if(err){
-				if(err.code === 'ENOENT'){
-					_.errout('cannot find ' + type + ' file or collection of ' + type + ' files included by app ' + app.name + ': ' + fileIdent);
-				}else{
-					_.errout(err);
-				}
-			}
-
-			var transform = transforms[type];
-
-			if(transform){
-				//console.log('transforming: ' + fileIdent);
-				str = transform(str, fileIdent, function(str){
-					if(str === undefined){
-						_.errout('transform of ' + fileIdent + ' resulted in undefined value');
-					}
-					//console.log('transform called back: ' + fileIdent);
-					finishRead(str);
-				});
-			}else{
-				finishRead(str);
-			}
-		}
-		
-		watchFile();
-		
-		function watchFile(){
-			fs.watchFile(fullPath, function (curr, prev) {
-			
-				console.log('updating file: ' + fullPath);
-			
-				fs.readFile(fullPath, 'utf8', function(err, str){
-					processFile(err, str);				
-					resetServerStateId();
-				});
-
-			});
-		}
-		function finishRead(str){
-			content[type][app.name+':'+fileIdent] = new Buffer(str);
-			
-			if(gzipped[type] !== undefined){
-
-				gzip(str, function(err, data){
-					gzipped[type][app.name+':'+fileIdent] = data;
-				});
-			}
-
-			hashes[type][app.name +':'+fileIdent] = hash(str);
-
-			if(cb) cb(fileIdent);
-		}
-	}
-
-
 	function makeExpressWrapper(wrapper){
 
-		var entries = {css: {}, js: {}},
-			attached = {};
-		
-		function findFiles(type, ident, app, cb, doNotUseContext){
-
-			var context = entries[type];
-			if(context[ident]){
-
-				if(doNotUseContext){	
-					cb();
-					return;
-				}
-			
-				cb(ident, true);
-				return;
-			}
-
-			findFile(type, ident+'.'+type, app, function(name){
-		
-				cb(name);
-			});
-		}
-		
-		function loadFiles(list, type, app, attachFile){
-			_.each(list, function(c){
-				findFiles(type, c, app, function(fileName, fromCollection){
-					if(arguments.length === 0) return;
-				
-					if(!fromCollection){
-						attachFile(app,type, fileName);
-						//console.log('found file: ' + type + ' ' + c);
-						entries[type][c] = [{name: fileName, appName: app.name}];
-					}
-				}, true);
-			});
-		}
-		
-		function loadCollection(list, type, app, attachFile, cb){
-	
-			var result = [];
-	
-			var cdl = _.latch(list.length, function(){
-				cb();
-			});
-		
-			_.each(list, function(c, index){
-				findFiles(type, c, app, function(fileName, fromCollection){
-
-					if(!fromCollection){
-						var v = {name: fileName, appName: app.name};
-						attachFile(app,type, fileName);
-						entries[type][c] = [v];
-						result[index] = v;
-					}else{
-						result[index] = fileName;
-					}
-					cdl();
-				});
-			});
-			return result;
-		}
-		
-		function attachFile(app, type, name, pathType){
-			_.assertString(name);
-			
-			var path = '/' + (pathType !== undefined ? pathType : type) + '/' + app.name + '/:hash/' + name;
-			if(!attached[path]){
-				attached[path] = true;
-				//console.log('attached path: ' + path);
-				wrapper.get(app, path, function(req, res){
-					
-					console.log('got file request: ' + path);
-					
-					//this bit here is to work around a Chrome bug
-					var chromeException = 
-						(req.header('User-Agent') && req.header('User-Agent').indexOf('Chrome')) !== -1 && 
-						req.header('Cache-Control') === 'max-age=0';
-					
-					if((req.header('Cache-Control') !== undefined && !chromeException) || req.header('Expires') !== undefined){
-						//console.log('headers: ' + JSON.stringify(req.headers));
-						res.header('Content-Type', '');
-						res.send(304);
-					}else{
-
-						var headers = {
-							'Cache-Control': 'public max-age=2592000', 
-							'Expires': 'Sat, 28 Apr 2100 10:00:00 GMT',
-							'Content-Type': getMimeType(type)};
-
-						var fileContents;
-
-						var key = app.name + ':' + name;
-						
-						var compHeader = req.header('Accept-Encoding');
-						if(compHeader && compHeader.indexOf('gzip') !== -1 && gzipped[type][key] !== undefined){
-							fileContents = gzipped[type][key];
-							headers['Content-Encoding'] = 'gzip';
-						}else{
-							fileContents = content[type][key];
-						}
-						
-						if(fileContents === undefined){
-							_.errout('file contents missing for ' + path);
-						}
-						//console.log('looking for file: ' + app.name + ':' + name);
-						
-						
-						if(chromeException){
-							headers['Warning'] = 'Working around Chrome 304 bug';
-						}
-						res.send(fileContents, headers);
-					}
-				});
-			}
-		}
 
 		function makeWrappingParts(app, expressApp, pageDef, title){
 			var header = '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" ' + 
 				'"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">\n'+
 				'<html xmlns="http://www.w3.org/1999/xhtml">\n'+
 				'<head><meta http-equiv="Content-type" content="text/html;charset=UTF-8"/>\n<title>' + title + '</title>';
-
-			_.each(pageDef.css, function(ident){
-				var c = entries.css[ident];
-				if(c === undefined) _.errout('cannot find css ' + ident);
-				for(var i=0;i<c.length;++i){
-					var hash = hashes.css[c[i].appName +':'+c[i].name];
-					var url = config.prefix + '/css/' + c[i].appName + '/' + hash + '/' + c[i].name;
-					header += '<link type="text/css" rel="stylesheet" href="' + url + '"></link>';
-				}
+			
+			files.includeCss(app, pageDef.css, function(url){
+				header += '<link type="text/css" rel="stylesheet" href="' + config.prefix + url + '"></link>';
 			});
 	
 			header += '</head><body>';
 		
 			var middle = '';
-		
-			var jsFiles = [];
-			function loadJs(ident){
-				var c = entries.js[ident];
-				if(c === undefined) _.errout('cannot find js ' + ident);
-				for(var i=0;i<c.length;++i){
-					if(typeof(c[i]) === 'string'){
-						loadJs(c[i]);
-					}else{
-						if(c[i] === undefined){
-							_.errout('cannot find js ' + ident);
-						}
-						var hash = hashes.js[c[i].appName +':'+c[i].name];
-						var url = config.prefix + '/js/' + c[i].appName + '/' + hash + '/' + c[i].name;
-
-						if(jsFiles.indexOf(url) === -1) jsFiles.push(url);
-					}
-				}
-			}
-			_.each(pageDef.js, loadJs);
 			
-			_.each(jsFiles, function(jsFile){
-				middle += '<script type="text/javascript" src="' + jsFile + '"></script>';
+			files.includeJs(app, pageDef.js, function(url){
+				middle += '<script type="text/javascript" src="' + config.prefix + url + '"></script>';
 			});
-		
-			var modelContent = '';
-			if(pageDef.models){
 
-				_.each(pageDef.models, function(modelName){
-					var appName = app.name;
-					if(appName === undefined){
-						_.errout('model template not found: ' + modelName);
-					}
-				
-					var hash = hashes.template[appName +':'+modelName];
-					var url = config.prefix + '/model/' + appName + '/' + hash + '/' + modelName + '.dust';
-					middle += '<script type="text/javascript" src="' + url + '"></script>';
-				});
-			}
-		
 			var footer = '</body></html>';
 			
-			var jsDetectorCookieJs = '<script type="text/javascript">';
-			jsDetectorCookieJs += "if(document.cookie.indexOf('hasjs') === -1){document.cookie = 'hasjs=true; expires=Fri, 3 Aug 2100 20:47:11 UTC; path=/'}";
-			jsDetectorCookieJs += '</script>';
+			var jsDetectorCookieJs = '';//changedetector.getDetectorStr(expressApp, app, config, serverStateId);
 			
-			var refreshDetectorJs = '';			
-			if(expressApp.settings.env === 'development' && !app.disableRefreshDetector){
-				refreshDetectorJs += '<script type="text/javascript">';
-				refreshDetectorJs += "var serverChangeRefreshDelay = 500;";				
-				refreshDetectorJs += "(function(){";
-				refreshDetectorJs += "function checkChanged(){";
-				refreshDetectorJs += 	"$.ajax({";
-				refreshDetectorJs += 		"type: 'POST',";
-				refreshDetectorJs += 		"url: '" + config.prefix + "/serverchanged',";
-				refreshDetectorJs += 		"data: {id: " + serverStateId + "},";				
-				refreshDetectorJs += 		"success: function(reply){";
-				refreshDetectorJs += 			"if(reply === ''){";
-				refreshDetectorJs += 				"setTimeout(checkChanged, serverChangeRefreshDelay);";
-				refreshDetectorJs += 			"}else{";
-				refreshDetectorJs += 				"window.location.reload();";
-				refreshDetectorJs += 			"}";
-				refreshDetectorJs += 		"},";
-				refreshDetectorJs += 		"error: function(err){";
-				refreshDetectorJs += 			"console.log(err);";
-				refreshDetectorJs += 			"setTimeout(checkChanged, serverChangeRefreshDelay);";
-				refreshDetectorJs += 		"}";
-				refreshDetectorJs += 	"});";
-				refreshDetectorJs += "}";
-				refreshDetectorJs += "setTimeout(checkChanged, serverChangeRefreshDelay);";
-				refreshDetectorJs += "})();";
-				refreshDetectorJs += '</script>';
-			}
+			var loggingJs = '';
+			loggingJs += '<script>';
+			loggingJs += 'if(typeof(console) === "undefined") console = {log: function(){}};';
+			loggingJs += 'function log(str){console.log(str);}';
+			loggingJs += '</script>';
+			
+			
 			return {
 				header: header,
-				javascript: middle + modelContent + jsDetectorCookieJs + refreshDetectorJs,
+				javascript: middle + loggingJs + jsDetectorCookieJs,
 				footer:footer
 			};
 		}
@@ -552,33 +293,26 @@ function prepare(config, cb){
 			var parts = makeWrappingParts(app, expressApp, pageDef, title);
 			
 			return parts.header + parts.javascript + wrappedContent + parts.footer;
-			
-			//return header + middle + modelContent + jsDetectorCookieJs + refreshDetectorJs + wrappedContent + footer;
-		}
-		
-		wrapper.template = function(app, templateName){
-	
-			if(arguments.length !== 2) _.errout('should be 2 arguments, but there are ' + arguments.length);
-	
-			var fullPath = app.dir + '/template/' + templateName + '.dust';
-			
-			findFile('template', templateName+'.dust', app, function(){
-				attachFile(app, 'template', templateName+'.dust', 'model');				
-			});
 		}
 
 		function makeTypeCollectionMethod(type){
-			return function(app, collectionName, list){
-				if(arguments.length !== 3) _.errout('should be 3 arguments, but there are ' + arguments.length);
+			return function(app, externalName, def){
+				_.assertLength(arguments, 3);
+				
+				if(type === 'js'){
+					var name = typeof(def) === 'string' ? def : def[0];
+					files.publishJs(app, externalName, def);
 
-				if(entries[type][collectionName] !== undefined){
-					return;
-				}
-
-				var result = loadCollection(list, type, app, attachFile, function(){
-					console.log(config.port + ' ' + (wrapper.isSecure ? 'https' : 'http') + ' ' + type + ' collection ' + collectionName + ' <- ' + JSON.stringify(list));
-				});	
-				entries[type][collectionName] = result;
+					console.log(config.port + ' ' + (wrapper.isSecure ? 'https ' : 'http ') + colourize(app.name, cyan) + ' js published ' + colourize(name, green) + ' -> ' + colourize(externalName, green));
+					
+				}else if(type === 'css'){
+				
+					var name = def;
+					files.publishCss(app, externalName, name);
+					
+					console.log(config.port + ' ' + (wrapper.isSecure ? 'https ' : 'http ') + colourize(app.name, cyan) + ' css published ' + colourize(name, green) + ' -> ' + colourize(externalName, green));
+					
+				}else _.errout('unknown type: ' + type);
 			};
 		}
 		
@@ -588,37 +322,92 @@ function prepare(config, cb){
 		var get = wrapper.get;
 		var post = wrapper.post;
 
+		var hosted = {};
+		var unhosted = {};
+		
+		var hostedContent = {};
+		var hostedZippedContent = {};
+
+		function hostFile(url, type, content, gzippedContent){
+			delete unhosted[url];
+			hostedContent[url] = content;
+			hostedZippedContent[url] = gzippedContent;
+			if(!hosted[url]){
+				hosted[url] = true;
+
+				wrapper.get(app, url, function(req, res){
+
+					if(unhosted[url]){
+						res.send(410);
+					}else{
+						serveFile(req, res, type, hostedContent[url], hostedZippedContent[url]);
+					}
+				});
+			}
+		}
+		function unhostFile(url){
+			unhosted[url] = true;
+		}
+
 		wrapper.page = function(app, pageDef){
+
+			if(pageDef.js === undefined) pageDef.js = [];
+			if(pageDef.css === undefined) pageDef.css = [];
+		
+			if(_.isString(pageDef.js)) pageDef.js = [pageDef.js];
+			if(_.isString(pageDef.css)) pageDef.css = [pageDef.css];
 		
 			var local = this;
 		
 			if(pageDef.url === undefined) _.errout('page definition must define a "url" parameter');
-			//if(pageDef.root === undefined) _.errout('page definition must define a "root" parameter');
 
 			_.assertString(pageDef.url);
-			//_.assertString(pageDef.root);
-
-			var extendedPageDef = {js: [], css: [], models: []};
-
-			doInclude(extendedPageDef, pageDef);
-			extendContext(extendedPageDef, pageDef);
-		
-			loadFiles(extendedPageDef.css, 'css', app, attachFile);
-			loadFiles(extendedPageDef.js, 'js', app, attachFile);
 			
+			try{
+				files.loadJs(app, pageDef.js, hostFile, unhostFile, function(){
+					//TODO
+				}, function(err, path){//this is the failure callback
+					_.errout(err);
+				});
+				
+				files.loadCss(app, imageryImportFunction, pageDef.css, hostFile, unhostFile, function(){
+					//TODO
+				}, function(err, path){//this is the failure callback
+					_.errout(err);
+				});
+			}catch(e){
+				sys.debug('error loading page: ' + pageDef.url);
+				throw e;
+			}			
+
+			if(pageDef.root){
+				_.errout('matterhorn no longer supports templates: ' + JSON.stringify(pageDef));
+			}
+					
 			function handler(req, res){
 		
 				if(pageDef.cb){
 					console.log('waiting for cb reply for ' + pageDef.url);
-					pageDef.cb(req, res, function(b){
-						console.log('got cb reply');
-						finish(req, res, b);
+					pageDef.cb(req, res, function(b, jsFiles){
+						if(arguments.length === 0){
+							console.log('Error 500, Internal Server Error - Reference Code: ' + res.uid);
+							res.send('Error 500, Internal Server Error - Reference Code: ' + res.uid, 500);
+						}else{
+							console.log('got cb reply');
+							finish(req, res, b, jsFiles);
+						}
 					});
 				}else{
 					finish(req, res, {});
 				}
 				
-				function finish(req, res, b){
+				function finish(req, res, b, jsFiles){
+				
+					jsFiles = jsFiles || [];
+					
+					for(var i=0;i<jsFiles.length;++i){
+						if(typeof(jsFiles[i]) !== 'string') _.errout('ERROR: jsFiles list contains non-string: ' + jsFiles[i]);
+					}
 				
 					if(b === undefined){
 						return;
@@ -627,35 +416,35 @@ function prepare(config, cb){
 					b.hasJs = !!req.cookies.hasjs;
 					b.urlPrefix = config.prefix || '';
 				
-					if(pageDef.root){
-				
-						dust.render(pageDef.root, b, function(err, content){
-							if(err) throw err;
+
+					var content = '\n<script>\n';
+					_.each(b, function(value, attr){
+						content += 'var ' + attr + ' = '  + JSON.stringify(value) + ';\n';
+					});
+					content += '</script>\n';
+
+					var extraJs = '';
+					_.each(jsFiles, function(jsFile){
+						_.assertString(jsFile);
+						extraJs += '<script src="' + (jsFile.indexOf('://') === -1 ? b.urlPrefix : '') + jsFile + '"></script>\n';
+					});
+
+					var title =  b.title || pageDef.title || app.name;
+					//console.log('TITLE OPTIONS: ' + b.title + ' ' + pageDef.title + ' ' + app.name);
 					
-							var html = renderWrapping(app, local, extendedPageDef, b.title || app.name, content);
-							console.log('sending');
-							res.send(html, {'Cache-Control': 'no-cache, no-store'});
-						});
-					}else{
-						var content = '\n<script>\n';
-						_.each(b, function(value, attr){
-							content += 'var ' + attr + ' = '  + JSON.stringify(value) + ';\n';
-						});
-						content += '</script>\n';
+					var parts = makeWrappingParts(app, local, pageDef, title, content);
+		
+					var html = parts.header + content + parts.javascript + extraJs + parts.footer;
 
-						var parts = makeWrappingParts(app, local, extendedPageDef, b.title || app.name, content);
-			
-						var html = parts.header + content + parts.javascript + parts.footer;
-
-						console.log('sending');
-						res.send(html, {'Cache-Control': 'no-cache, no-store'});
-					}
+					res.send(html, {'Cache-Control': 'no-cache, no-store'});
 				}
 			}
 
 			var args = [app, pageDef.url].concat(pageDef.filters || []).concat(handler);
 			wrapper.get.apply(undefined, args);
 		}
+		
+		wrapper.stub = function(){}
 		
 		wrapper.imagery = function(app, genName, mimeType, genFunction){
 			
@@ -664,12 +453,12 @@ function prepare(config, cb){
 			var urlPrefix = '/img/' + app.name + '/' + genName + '/';
 
 			function genCreatorFunction(params){
-				
+				//console.log('params: ' + JSON.stringify(params));
 				var buffer = genFunction.apply(undefined, params);
 				
 				var paramStr = params.join(' ');
-				console.log('param str: ' + paramStr);
-				var urlPattern = urlPrefix + hash(paramStr + serverStateId);
+
+				var urlPattern = urlPrefix + files.computeHash(paramStr + serverStateId);
 				
 				wrapper.get(app, urlPattern, function(req, res){
 				
@@ -687,30 +476,102 @@ function prepare(config, cb){
 			
 			console.log(config.port + ' ' + (wrapper.isSecure ? 'https ' : 'http ') + colourize(app.name, cyan) + ' imagery ' + colourize(genName, green));
 		}
-	
+		
 		function javascriptRedirect(res, url){
 			res.send(redirHeader + config.prefix + url + redirFooter);
 		}
 		
 		wrapper.get = function(app, path){
 	
+			path = wrapper.getSilent.apply(undefined, arguments);
+			console.log(config.port + ' ' + (wrapper.isSecure ? 'https ' : 'http ') + colourize(app.name, cyan) + ' get ' + colourize(path, green));
+		}
+		
+		function makeRequestCbWrapper(path, type, cb){
+			return function(req, res){
+				res.javascriptRedirect = javascriptRedirect;
+			
+				var uid = random.uid();
+				req.uid = uid;
+				res.uid = uid;
+				//console.log(JSON.stringify(Object.keys(req)));
+				console.log('+' + type + ' ' + req.url + ' ' + path + ' ' + uid);
+
+				var oldEnd = res.end;
+				res.end = function(){
+					oldEnd.apply(this, Array.prototype.slice.call(arguments));
+					console.log('-' + type + ' ' + req.url + ' ' + path + ' ' + uid);
+				}
+			
+				cb(req, res);
+			}
+		}
+		
+		wrapper.getSilent = function(app, path){
+		
+	
 			var args = Array.prototype.slice.call(arguments,1);
 			args[0] = path = config.prefix + path;
 			var cb = args[args.length-1];
-			args[args.length-1] = function(req, res){
-				res.javascriptRedirect = javascriptRedirect;
-				cb(req, res);
-			}
+			args[args.length-1] = makeRequestCbWrapper(path, 'GET', cb);
 			get.apply(wrapper, args);
-			console.log(config.port + ' ' + (wrapper.isSecure ? 'https ' : 'http ') + colourize(app.name, cyan) + ' get ' + colourize(path, green));
+
+			return args[0];
 		}
 	
 		wrapper.post = function(app, path){
 
 			var args = Array.prototype.slice.call(arguments,1);
 			args[0] = path = config.prefix + path;
+
+			var cb = args[args.length-1];
+			args[args.length-1] = makeRequestCbWrapper(path, 'POST', cb);
+
 			post.apply(wrapper, args);
 			console.log(config.port + ' ' + (wrapper.isSecure ? 'https ' : 'http ') + colourize(app.name, cyan) + ' post ' + colourize(path, green));
+		}
+		
+		wrapper.serveJavascriptFile = function(app, path, name){
+			files.loadJsFile(app, path, name, hostFile, unhostFile, function(){
+				//TODO
+			}, function(){
+				_.errout('cannot find file to be served as "' + name + '" at path: ' + path);
+			});				
+			console.log(config.port + ' ' + (wrapper.isSecure ? 'https ' : 'http ') + colourize(app.name, cyan) + 
+				' serving-js-file ' + colourize(name, green));
+		}
+		
+		wrapper.serveJavascript = function(app, name, cb){
+		
+			var urlPrefix = '/js/' + app.name +'/';
+			var url;
+			var hash;
+			var gzipped;
+			cb(function(jsStr){
+
+				jsStr = InDebugEnvironment ? jsStr : uglify(jsStr);
+
+				
+				var hashStr = files.hashStr(jsStr);
+				if(hashStr !== hash){
+
+					url = urlPrefix+hashStr+'/'+name+'.js';
+					hostFile(url, 'js', jsStr, gzipped);
+				
+					zlib.gzip(jsStr, function(err, data){
+						if(err) _.errout(err);
+						gzipped = data;
+						console.log('zipped ' + name + ' ' + data.length + ' from ' + jsStr.length + ' chars');
+					
+						hash = hashStr;
+
+						hostFile(url, 'js', jsStr, gzipped);
+					});
+				}
+				
+				return url;
+
+			});
 		}
 	
 		return wrapper;
@@ -719,60 +580,81 @@ function prepare(config, cb){
 	var express = require('express');
 
 	//make express secure app actually secure
-	var privateKey = fs.readFileSync(process.cwd() + '/privatekey.pem').toString();
-	var certificate = fs.readFileSync(process.cwd() + '/certificate.pem').toString();
+	var privateKey, certificate;
+	var gotHttpsStuff = false;
+	try{
+		privateKey = fs.readFileSync(process.cwd() + '/privatekey.pem').toString();
+		certificate = fs.readFileSync(process.cwd() + '/certificate.pem').toString();
+		gotHttpsStuff = true;
+	}catch(e){
+		console.log("WARNING: Https access disabled, since one or both of privatekey.pem and certificate.pem were not found or could not be read");
+	}	
 	
 	var localApp = express.createServer(
 		express.bodyParser()
 	  , express.cookieParser());
 
-	var localSecureApp = express.createServer({key: privateKey, cert: certificate},
-		express.bodyParser()
-	  , express.cookieParser());
-
-
 	localApp.settings.env = envType;
-	localSecureApp.settings.env = envType;
 	
 	localApp.settings.port = config.port;
-	localApp.settings.securePort = config.securePort;
-
-	localApp.configure(function(){
-		localApp.use(express.errorHandler({ dumpExceptions: true, showStack: true }));
-	});
-	localSecureApp.configure(function(){
-		localSecureApp.use(express.errorHandler({ dumpExceptions: true, showStack: true }));
-	});
 
 	makeExpressWrapper(localApp);
-	makeExpressWrapper(localSecureApp);
-
-
-
-	localSecureApp.isSecure = true;
 
 	localApp.set('host', 'http://' + hostName);
-	localSecureApp.set('host', 'http://' + hostName);
 	localApp.set('securehost', 'https://' + hostName);
-	localSecureApp.set('securehost', 'https://' + hostName);
 
-	function serverChangedCb(req, res){
-
-		var expectedId = req.body.id;
-		if(expectedId !== serverStateId){
-			res.send('r');
-		}else{
-			setTimeout(function(){
-				res.send('');				
-			}, 30*1000);
-		}
-	}
 	if(envType === 'development'){
 		localApp.post(exports, '/serverchanged', serverChangedCb);
 	}
-	if(envType === 'development'){
-		localSecureApp.post(exports, '/serverchanged', serverChangedCb);
+
+	function serverChangedCb(req, res){
+
+		var start = Date.now();
+		var expectedId = req.body.id;
+	
+		function tryFunc(){
+
+			if(expectedId !== serverStateId){
+				res.send('r');
+			}else if(Date.now() - start > 30*1000){
+				res.send('');				
+			}else{
+				setTimeout(tryFunc, 100);
+			}
+		}
+		tryFunc();
 	}
+	
+	if(gotHttpsStuff){
+		var localSecureApp = express.createServer({key: privateKey, cert: certificate},
+			express.bodyParser()
+		  , express.cookieParser());
+
+		localApp.settings.securePort = config.securePort;
+
+		localApp.configure(function(){
+			localApp.use(express.errorHandler({ dumpExceptions: true, showStack: true }));
+		});
+		localSecureApp.settings.env = envType;
+
+		localSecureApp.configure(function(){
+			localSecureApp.use(express.errorHandler({ dumpExceptions: true, showStack: true }));
+		});
+
+		makeExpressWrapper(localSecureApp);
+
+
+
+		localSecureApp.isSecure = true;
+		localSecureApp.set('host', 'http://' + hostName);
+		localSecureApp.set('securehost', 'https://' + hostName);
+
+		if(envType === 'development'){
+			localSecureApp.post(exports, '/serverchanged', serverChangedCb);
+		}
+	}
+
+
 	
 	function applyIf(name, localApp, app, moduleName){
 		var list = app[name + '__s'];
@@ -784,16 +666,23 @@ function prepare(config, cb){
 	}
 	
 	function include(localApp, app, moduleName){
-		applyIf('get', localApp, app, moduleName);
-		applyIf('post', localApp, app, moduleName);
-		applyIf('js', localApp, app, moduleName);
-		applyIf('css', localApp, app, moduleName);
-		applyIf('template', localApp, app, moduleName);
-		applyIf('page', localApp, app, moduleName);
+		_.each(methods, function(method){
+			applyIf(method, localApp, app, moduleName);
+		});
 	}
 	
 	var local = {
-		include: function(moduleName){
+		include: function(moduleName, originalMsgCb){
+		
+			//TODO include should walk the entire tree, then include the flattened list in order of first visit (to avoid duplicates)
+
+			var all = {};		
+			function msg(n){
+				all[n] = true;
+			}
+			
+			msgCb = originalMsgCb || msg;
+		
 			var application = getApplication(moduleName);
 			if(application === undefined){
 				_.errout('cannot find application to include: ' + moduleName);
@@ -802,21 +691,23 @@ function prepare(config, cb){
 			if(reqs){
 				_.each(reqs, function(reqModuleName){
 					sys.debug(moduleName + ' including required module: ' + reqModuleName);
-					local.include(reqModuleName);
+					local.include(reqModuleName, msgCb);
 				});
-			}else{
-				console.log('module has no requirements: ' + moduleName);
 			}
-			console.log('including ' + moduleName);
 			include(localApp, app, moduleName);
-			include(localSecureApp, secureApp, moduleName);
+			if(gotHttpsStuff) include(localSecureApp, secureApp, moduleName);
+			
+			if(!originalMsgCb){
+				console.log('loaded module ' + moduleName);
+				_.each(_.keys(all), function(moduleName){
+					console.log('included module ' + moduleName);
+				});
+			}
 		},
 		getServer: function(){
 			return localApp;
 		},
-		getSecureServer: function(){
-			return localSecureApp;
-		},
+		
 		getPort: function(){
 			return config.port;
 		},
@@ -824,13 +715,37 @@ function prepare(config, cb){
 			return config.securePort;
 		}
 	};
-	function after(){
-	
 
-		localApp.listen(config.port);
-		localSecureApp.listen(config.securePort);
+	if(gotHttpsStuff){	
+		local.getSecureServer = function(){
+			return localSecureApp;
+		}
+	}	
 
-		console.log('\nlistening on port ' + config.port + ' (and ' + config.securePort + '.)\n\n');
+	function after(readyCb){	
+
+		var cdl = _.latch(1 + (gotHttpsStuff ? 1 : 0), function(){
+
+			console.log('\nlistening on port ' + config.port + httpsPart + '\n\n');
+			if(readyCb) readyCb();
+		});
+		
+		localApp.listen(config.port, cdl);
+		var httpsPart = '';
+		
+		if(gotHttpsStuff){
+			localSecureApp.listen(config.securePort);
+			httpsPart = ' (and ' + config.securePort + '.)';
+		}
+		
+		
+		
+		return function(cb){
+			console.log('matterhorn app ' + config.name + ' shutting down as requested.');
+			localApp.close();
+			if(localSecureApp) localSecureApp.close();
+			if(cb) cb();
+		}
 	}
 	
 	cb(local, after);
