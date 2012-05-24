@@ -1,7 +1,7 @@
 
 'Matterhorn' is a means for composing web application modules built using node.js and the express framework, and a collection of such modules.
 
-Right now, this software is undocumented and largely untested.  You'd be crazy to use it.
+Right now, this software is undocumented and somewhat untested.
 
 *****
 
