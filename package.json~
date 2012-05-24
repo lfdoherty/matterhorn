@@ -9,7 +9,6 @@
 		"express": "*",
 		"uglify-js": ">=1.0.2",
 		"underscorem": "*",
-		"seedrandom": "*",
-		"burrito": "*"
+		"seedrandom": "*"
 	}
 }

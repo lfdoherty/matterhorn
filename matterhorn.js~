@@ -341,6 +341,9 @@ function prepare(config, cb){
 			};
 		}
 		
+		//wrapper.css = makeTypeCollectionMethod('css');
+		//wrapper.js = makeTypeCollectionMethod('js');
+
 		var get = wrapper.get;
 		var post = wrapper.post;
 
