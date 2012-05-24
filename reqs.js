@@ -1,5 +1,4 @@
 
-var burrito = require('burrito');
 var pathModule = require('path')
 
 exports.extractRequires = extractRequires
@@ -8,30 +7,7 @@ exports.resolve = resolveRequire
 
 var _ = require('underscorem')
 
-function visitRequires(str, f){
-	return burrito(str, function (node) {
-		if (node.name === 'call' && node.start.value === 'require'){
-			_.assert(node.start.type === 'name');
-			f(node)
-		}
-	})
-}
-/*
-function extractRequires(str){
-	var requires = {}
 
-	visitRequires(str, function(node){		
-		var params = node.value[1][0].slice(1)
-		if(params.length !== 1) throw new Error("browser-side require must be of form require('some-module[/dir/file.js]')")
-		if(!_.isString(params[0])) throw new Error('browser-side require must use a string literal')
-		
-		var reqName = params[0]
-		requires[reqName] = true
-		require('util').debug(node.start.value + ': ' + require('util').inspect(params, false, 3))
-	});
-	
-	return Object.keys(requires)
-}*/
 function trim(str){
 	return str.replace(/^\s+|\s+$/g,'');
 } 
@@ -64,21 +40,11 @@ function extractRequires(str){
 	
 	var res = Object.keys(requires)
 	
-	//console.log('result: ' + JSON.stringify(res))
 	return res
 }
 
 function replaceRequires(str, substitutionNames){
-	//var requires = {}
-	/*return visitRequires(str, function(node){					
-		var params = node.value[1][0].slice(1)
-		var reqName = params[0]
-		var sub = substitutionNames[reqName]
-		console.log('reqName: ' + reqName)
-		_.assertString(sub)
-		node.wrap(sub)
-	});*/
-	
+
 	var lines = str.split('\n');
 	for(var i=0;i<lines.length;++i){
 		var line = lines[i];
@@ -124,12 +90,6 @@ function resolveRequire(currentModule, req, special, currentPath){
 		_.errout('module used in matterhorn must export its module as .module: ' + JSON.stringify(Object.keys(currentModule)))
 	}
 	currentPath = currentPath || pathModule.dirname(currentModule.module.filename)
-	//var dir = currentModule.dir;
-	
-	//var paths = [dir, dir+'/js', 
-	//req = req.trim()
-	
-	
 	
 	//console.log('req(' + req + ') ' + req.indexOf('./'))
 	if(req.indexOf('./') === 0 || req.indexOf('../') === 0 || req.indexOf('/') === 0){
@@ -186,11 +146,9 @@ function resolveRequire(currentModule, req, special, currentPath){
 					module: require(rr),
 					originalName: req
 				}
-				//return currentModule.module.require.resolve(insertPath(req, special))
 			}catch(e3){
 				console.log(e3)
 				try{
-					//currentModule.module.require.resolve(rr)
 					fakeResolve(currentModule.module, rr, 'js')
 					console.log('managed to resolve module')
 				}catch(e2){
@@ -201,6 +159,4 @@ function resolveRequire(currentModule, req, special, currentPath){
 			}
 		}
 	}
-	
-	//currentModule.module.require(
 }
