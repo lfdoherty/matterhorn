@@ -8,4 +8,4 @@ Right now, this software is undocumented and largely untested.  You'd be crazy t
 
 Matterhorn is intended to be a solution to the problem of composing together the many disparate elements that make
 up a node.js web app: CSS, Javascript, templates, etc.  It has fairly specific ideas about how a web application
-should be built, especially at this early stage where even details such as the templating engine (dust) are hard-coded.
+should be built.
