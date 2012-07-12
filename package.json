@@ -1,6 +1,6 @@
 {
 	"name": "matterhorn",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"description": "Formalizes a way of building web applications atop the express framework.",
 	"author": "Liam Doherty",
 	"main": "matterhorn",
@@ -9,6 +9,7 @@
 		"express": "*",
 		"uglify-js": ">=1.0.2",
 		"underscorem": "*",
-		"seedrandom": "*"
+		"seedrandom": "*",
+		"module_resolve": "*"
 	}
 }
