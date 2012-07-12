@@ -20,8 +20,11 @@ function computeHash(str){
 exports.hashStr = computeHash
 
 exports.readFile = _.memoizeAsync(function(path, cb){
+	var stack = new Error().stack
 	fs.readFile(path, 'utf8', function(err, str){
-		if(err) throw err;
+		if(err){
+			throw new Error('error opening: ' + path + '\n' + err + '\ncalling stack:\n'+stack)
+		}
 		cb(str)
 	})
 })

@@ -51,13 +51,18 @@ function replaceRequires(str, substitutionNames){
 		if(lineIsRequire(line)){
 			if(line.indexOf('var ') === 0){
 				var reqName = extractReqFromLine(line)
+				var after = line.substr(line.indexOf(')')+1)
+				if(firefoxModuleBlacklist.indexOf(reqName) !== -1){
+					lines[i] = line.substr(0, line.indexOf('=')) + ' = window'+after
+					continue
+				}
 				var sub = substitutionNames[reqName]
 				if(sub === undefined){
 					console.log('got ' + JSON.stringify(substitutionNames))
 					throw new Error('but cannot find required library: ' + reqName)
 				}
 				_.assertDefined(sub)
-				lines[i] = line.substr(0, line.indexOf('=')) + ' = '+sub;
+				lines[i] = line.substr(0, line.indexOf('=')) + ' = '+sub+after;
 			}else{
 				lines[i] = '';
 			}
@@ -80,7 +85,14 @@ function insertPath(req, special){
 	return d + '/' + special + '/' + b
 }
 
-function resolveRequire(currentModule, req, special, currentPath){
+var firefoxModuleBlacklist = ['timers', 'xhr']
+
+function resolveRequire(currentModule, req, special, currentPath, currentName){
+	if(firefoxModuleBlacklist.indexOf(req) !== -1){
+		console.log('ignoring browser-side require that may be the name of a module Firefox addons have to include to get basic Javascript functionality for some stupid reason: ' + req)
+		return
+	}
+	//console.log('resolve: ' + req)
 	//_.assertLength(arguments, 3)
 	_.assertString(req)
 	_.assertString(special)
@@ -128,15 +140,47 @@ function resolveRequire(currentModule, req, special, currentPath){
 		try{
 			//return currentModule.module.require.resolve(req)
 			var h = {}
+			h.module = currentModule.module.require(rr)
+			var moduleDir = pathModule.dirname(h.module.module.filename)
+			if(h.module.base && req === rr){
+				var realPath = pathModule.resolve(moduleDir, h.module.base)+'.'+special
+				return {
+					name: realPath,
+					module: h.module,
+					originalName: req
+				}
+			}
 			h.name = fakeResolve(currentModule.module, req, special)
 			//console.log('got name: ' + h.name)
 			//console.log('getting module: ' + rr)
 			//console.log('&trying: ' + rr)
-			h.module = currentModule.module.require(rr)
 			h.originalName = req
-			//console.log('done')
+			//console.log('done: ' + JSON.stringify(Object.keys(h.module)))
+			/*if(h.name === 'util' || h.name === 'buffer'){
+				console.log('here: ' + 'cannot include node.js libraries browser-side: ' + h.name)
+				_.errout('cannot include node.js libraries browser-side: ' + h.name)
+			}*/
+			/*if(h.module.blacklist){
+				var list = h.module.blacklist;
+				//console.log('got blacklist: ' + JSON.stringify(list) + ' ' + h.name)
+				//console.log(JSON.stringify(Object.keys(h.module)))
+				for(var i=0;i<list.length;++i){
+					var v = list[i]
+					//console.log('module dir: ' + moduleDir)
+					//console.log('module path: ' + h.module.module.filename)
+					var realPath = pathModule.resolve(moduleDir, v)+'.'+special
+					console.log(realPath + ' =? ' + h.name)
+					if(realPath === h.name){
+						var e = new Error('this is not a valid file to include browser-side: ' + h.name)
+						e.blacklist = true
+						throw e
+					}
+				}
+			}*/
 			return h
 		}catch(e){
+			//if(e.blacklist) throw e
+			
 			console.log('(' + req + ')')
 			var d = pathModule.dirname(req)
 			var b = pathModule.basename(req)
@@ -155,7 +199,8 @@ function resolveRequire(currentModule, req, special, currentPath){
 					console.log(e2)
 					throw new Error('cannot even resolve require module: ' + rr + ' of ' + req)
 				}
-				throw new Error('cannot resolve require: ' + req + ' from ' + currentPath)
+				//console.log(e)
+				throw new Error('cannot resolve require: ' + req + ' from ' + currentName)
 			}
 		}
 	}

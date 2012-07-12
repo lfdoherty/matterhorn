@@ -1,4 +1,6 @@
 
+require('module_resolve')
+
 var sys = require('util'),
 	fs = require('fs'),
 	pathModule = require('path'),
@@ -273,6 +275,8 @@ function prepare(config, cb){
 
 
 		function makeWrappingParts(app, expressApp, pageDef, title, includeJs, includeCss, iconUrl){
+			_.assertFunction(includeJs)
+			
 			var header = '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" ' + 
 				'"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">\n'+
 				'<html xmlns="http://www.w3.org/1999/xhtml">\n'+
@@ -397,8 +401,15 @@ function prepare(config, cb){
 			
 				jsFiles.load(app, pageDef.js, hostFile, unhostFile, function(err, includeJsFunc){
 					if(err) _.errout(err);
+					_.assertFunction(includeJsFunc)
 					includeJs = includeJsFunc
 				});
+				
+				setTimeout(function(){
+					if(includeJs === undefined){
+						_.errout('js files never finished loading: ' + pageDef.js)
+					}
+				}, 1000)
 				
 				if(pageDef.css){
 					cssFiles.load(app, pageDef.css, hostFile, unhostFile, imageryImportFunction, function(err, includeCssFunc){
@@ -417,7 +428,7 @@ function prepare(config, cb){
 				_.errout('matterhorn no longer supports templates: ' + JSON.stringify(pageDef));
 			}
 			
-			if(pageDef.icon){
+			if(pageDef.icon){//TODO fix directory resolution to be relative to module dir
 				var iconUrl = '/icon/'+pathModule.basename(pageDef.icon)
 				var iconBuffer = fs.readFileSync(pageDef.icon)
 				wrapper.get(app, iconUrl, function(req, res){
@@ -540,6 +551,7 @@ function prepare(config, cb){
 	
 			path = wrapper.getSilent.apply(undefined, arguments);
 			//console.log(config.port + ' ' + (wrapper.isSecure ? 'https ' : 'http ') + colourize(app.name, cyan) + ' get ' + colourize(path, green));
+			
 			alog(appName,'get', config.port + ' ' + (wrapper.isSecure ? 'https ' : 'http ') + app.name + ' get ' + path);
 		}
 		
