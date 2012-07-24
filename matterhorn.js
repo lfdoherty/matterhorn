@@ -34,9 +34,9 @@ var quicklog = require('quicklog')
 
 var log = quicklog.make('matterhorn')
 
-var apps = {};
-var claimed = {};
-var secureApps = {};
+//var apps = {};
+//var claimed = {};
+//var secureApps = {};
 
 var claimedSecure = {};
 getApplication = function(moduleName){
@@ -148,17 +148,21 @@ function serveFile(req, res, type, content, gzippedContent){
 		res.send(304);
 	}else{
 */
-		var headers = {
+		/*var headers = {
 			'Cache-Control': 'public max-age=2592000', 
 			'Expires': 'Sat, 28 Apr 2100 10:00:00 GMT',
-			'Content-Type': getMimeType(type) + ';charset=utf-8'};
+			'Content-Type': getMimeType(type) + ';charset=utf-8'};*/
+		res.header('Cache-Control', 'public max-age=2592000')
+		res.header('Expires', 'Sat, 28 Apr 2100 10:00:00 GMT')
+		res.header('Content-Type', getMimeType(type) + ';charset=utf-8')
 
 		var fileContents;
 
 		var compHeader = req.header('Accept-Encoding');
 		if(compHeader && compHeader.indexOf('gzip') !== -1 && gzippedContent !== undefined){
 			fileContents = gzippedContent;
-			headers['Content-Encoding'] = 'gzip';
+			//headers['Content-Encoding'] = 'gzip';
+			res.header('Content-Encoding', 'gzip')
 		}else{
 			fileContents = content
 		}
@@ -172,7 +176,7 @@ function serveFile(req, res, type, content, gzippedContent){
 		if(chromeException){
 			headers['Warning'] = 'Working around Chrome 304 bug';
 		}*/
-		res.send(fileContents, headers);
+		res.send(fileContents);
 	//}
 }
 		
@@ -512,7 +516,9 @@ function prepare(config, cb){
 		
 					var html = parts.header + content + parts.javascript + extraJs + parts.footer;
 
-					res.send(html, {'Cache-Control': 'no-cache, no-store'});
+					res.header('Cache-Control', 'no-cache, no-store')
+					//res.send(html, {'Cache-Control': 'no-cache, no-store'}, 200);
+					res.send(html, 200);
 				}
 			}
 
@@ -542,12 +548,16 @@ function prepare(config, cb){
 				var urlPattern = urlPrefix + files.computeHash(paramStr + serverStateId);
 				
 				wrapper.get(app, urlPattern, function(req, res){
-				
+					res.header('Cache-Control', 'public max-age=2592000')
+					res.header('Expires', 'Sat, 28 Apr 2100 10:00:00 GMT')
+					res.head('Content-Type', mimeType)
+					res.send(buffer)
+					/*
 					res.send(buffer, {
 						'Cache-Control': 'public max-age=2592000', 
 						'Expires': 'Sat, 28 Apr 2100 10:00:00 GMT',
 						'Content-Type': mimeType
-						});
+						});*/
 				});
 				
 				return urlPattern;
@@ -726,9 +736,9 @@ function prepare(config, cb){
 		log("WARNING: Https access disabled, since one or both of privatekey.pem and certificate.pem were not found or could not be read");
 	}	
 	
-	var localApp = express.createServer(
-		express.bodyParser()
-	  , express.cookieParser());
+	var localApp = express.createServer()
+	localApp.use(express.bodyParser())
+	localApp.use(express.cookieParser())
 
 	localApp.settings.env = envType;
 	
