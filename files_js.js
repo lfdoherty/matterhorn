@@ -15,13 +15,13 @@ var jsMappings = {}
 
 //hostFile(url, type, content, gzippedContent)
 //unhostFile(url)
-exports.load = function(app, jsName, hostFile, unhostFile, cb){
-	_.assertLength(arguments, 5)
+exports.load = function(app, jsName, hostFile, unhostFile, logger, cb){
+	_.assertLength(arguments, 6)
 
 	//console.log('beginning loading: ' + jsName)
-	var resolvedName = reqs.resolve(app, jsName, 'js')
+	var resolvedName = reqs.resolve(app, jsName, 'js', logger)
 	//console.log('loading: ' + resolvedName.name)
-	loadAndWrapJs(resolvedName.name, resolvedName.module, hostFile, unhostFile, function(err, res){
+	loadAndWrapJs(resolvedName.name, resolvedName.module, hostFile, unhostFile, logger, function(err, res){
 		//console.log('here: ' + resolvedName.name)
 		if(err){ cb(err); return}
 		function includeFunction(){
@@ -90,14 +90,16 @@ function getSymbol(path){
 	var symbol = '_' + name.replace(/-/gi,'').replace(/\./gi,'_') + symbolHash
 	return symbol
 }
-var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, cb){
+var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log, cb){
 	_.assertString(path)
+	_.assertFunction(log)
+	_.assertFunction(cb)
 	
 	var lastModTime;
 	if(oldWrappedJs[path] === undefined){
 		fs.watchFile(path, function (curr, prev) {
 			if(curr.mtime > prev.mtime){
-				console.log('updating file: ' + path);
+				log('updating file: ' + path);
 
 				lastModTime = curr.mtime
 				refresh(function(err, res){
@@ -186,7 +188,7 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, cb)
 					cb(undefined, result)
 				})
 			}, function(){
-				console.log('failed to finish loading: ' + path)
+				log('failed to finish loading: ' + path)
 			})
 
 			setTimeout(function(){
@@ -195,7 +197,7 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, cb)
 		
 			requirements.forEach(function(req){
 
-				var r = reqs.resolve(app, req, 'js', pathModule.dirname(path), path)
+				var r = reqs.resolve(app, req, 'js', log, pathModule.dirname(path), path)
 				if(r === undefined){//means reqs.resolve decided it wasn't a valid require statement
 					reqCdl()
 					return
@@ -208,7 +210,7 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, cb)
 				if(urlsForOther === undefined) urlsForOther = urlsForJs[r.name] = []
 				if(allUrls.indexOf(urlsForOther) === -1) allUrls.push(urlsForOther)
 
-				loadAndWrapJs(r.name, r.module, hostFile, unhostFile, function(err, rm){
+				loadAndWrapJs(r.name, r.module, hostFile, unhostFile, log, function(err, rm){
 					if(err) throw err
 					_.assertString(r.originalName)
 

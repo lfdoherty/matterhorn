@@ -14,7 +14,6 @@ var stylus = require('stylus');
 var zlib = require('zlib');
 
 var changedetector = require('./changedetector');
-//var files = require('./files');
 var jsFiles = require('./files_js')
 var cssFiles = require('./files_css')
 var utilFiles = require('./util')
@@ -25,10 +24,15 @@ function getMimeType(type){
 	if(type === 'js') return 'text/javascript';
 	else if(type === 'css') return 'text/css';
 	else if(type === 'template') return 'text/javascript';
+	else if(type === 'json') return 'application/json';
 	else{
 		_.errout('mime type unknown for type: ' + type);
 	}
 }
+
+var quicklog = require('quicklog')
+
+var log = quicklog.make('matterhorn')
 
 var apps = {};
 var claimed = {};
@@ -37,13 +41,11 @@ var secureApps = {};
 var claimedSecure = {};
 getApplication = function(moduleName){
 	if(apps[moduleName] === undefined){
-		console.log(JSON.stringify(Object.keys(apps)));
+		log(JSON.stringify(Object.keys(apps)));
 	}
 	return apps[moduleName];
 }
-var methods = ['get', 'post', 
-	//'js', 'css',
-	'page', 'imagery', 'stub', 'serveJavascript', 'serveJavascriptFile'];
+var methods = ['get', 'post', 'page', 'imagery', 'stub', 'serveJavascript', 'serveJavascriptFile'];
 
 
 var alogs = {};
@@ -51,11 +53,29 @@ function alog(appName, type, msg){
 	_.assertString(appName);
 	var key = appName+':'+type;
 	if(alogs[key] === undefined){
-		alogs[key] = fs.createWriteStream(appName + '-' + type + '.log');
+		alogs[key] = quicklog.make(appName + '-'+type)//fs.createWriteStream(appName + '-' + type + '.log');
 	}
-	alogs[key].write(msg+'\n');
+	alogs[key](msg);
 }
 
+exports.load = function(config, cb){
+	//app = new Facade();
+	//secureApp = new Facade(true);
+	/*function doneCb(){
+		//TODO
+		log('finished setup of matterhorn\n')
+		prepare(config, function(local, after){
+			after()
+			log('finished preparing matterhorn\n')
+		})//TODO FIXME
+	}*/
+
+	prepare(config, function(local, after){
+		cb(local.getServer(), local.getSecureServer(), after)
+	})
+	//cb(app, secureApp, doneCb)
+}
+/*
 function Facade(secure){
 	this.secure = secure;
 	var local = this;
@@ -97,7 +117,7 @@ _.each(methods, function(m){
 		if(this[key] === undefined) _.errout('missing list(' + key + ')');
 		this[key].push(arguments);
 	}
-});
+});*/
 
 exports.do304IfSafe = function(req, res){
 
@@ -156,8 +176,8 @@ function serveFile(req, res, type, content, gzippedContent){
 	//}
 }
 		
-app = new Facade();
-secureApp = new Facade(true);
+//app = new Facade();
+//secureApp = new Facade(true);
 
 //var config = {name: appName, host: hostName, env: envType, port: port, securePort: securePort}
 function prepare(config, cb){
@@ -234,7 +254,7 @@ function prepare(config, cb){
 	
 	function resetServerStateId(){
 		serverStateId = ''+Math.floor(Math.random()*1000*1000);
-		console.log('server state uid: ' + serverStateId);
+		log('server state uid: ' + serverStateId);
 	}
 	resetServerStateId();
 
@@ -269,7 +289,7 @@ function prepare(config, cb){
 	}
 
 
-	console.log('\n\nLoading matterhorn app as main application: ' + colourize(appName, purple) + '\n');
+	log('\n\nLoading matterhorn app as main application: ' + colourize(appName, purple) + '\n');
 
 	function makeExpressWrapper(wrapper){
 
@@ -354,7 +374,9 @@ function prepare(config, cb){
 		var hostedContent = {};
 		var hostedZippedContent = {};
 
-		function hostFile(url, type, content, gzippedContent){
+		function hostFile(app, url, type, content, gzippedContent){
+			_.assertLength(arguments, 5)
+			
 			delete unhosted[url];
 			hostedContent[url] = content;
 			hostedZippedContent[url] = gzippedContent;
@@ -384,7 +406,7 @@ function prepare(config, cb){
 		
 			//if(_.isString(pageDef.js)) pageDef.js = [pageDef.js];
 			//if(_.isString(pageDef.css)) pageDef.css = [pageDef.css];
-			console.log('processing page: ' + pageDef.url)
+			log('processing page: ' + pageDef.url)
 			if(pageDef.js) _.assertString(pageDef.js)
 			if(pageDef.css) _.assertString(pageDef.css)
 		
@@ -399,7 +421,7 @@ function prepare(config, cb){
 			
 			try{
 			
-				jsFiles.load(app, pageDef.js, hostFile, unhostFile, function(err, includeJsFunc){
+				jsFiles.load(app, pageDef.js, hostFile.bind(undefined,app), unhostFile, log, function(err, includeJsFunc){
 					if(err) _.errout(err);
 					_.assertFunction(includeJsFunc)
 					includeJs = includeJsFunc
@@ -412,7 +434,7 @@ function prepare(config, cb){
 				}, 1000)
 				
 				if(pageDef.css){
-					cssFiles.load(app, pageDef.css, hostFile, unhostFile, imageryImportFunction, function(err, includeCssFunc){
+					cssFiles.load(app, pageDef.css, hostFile.bind(undefined,app), unhostFile, imageryImportFunction, log, function(err, includeCssFunc){
 						if(err) throw err
 						includeCss = includeCssFunc
 					});
@@ -441,13 +463,13 @@ function prepare(config, cb){
 			function handler(req, res){
 		
 				if(pageDef.cb){
-					console.log('waiting for cb reply for ' + pageDef.url);
+					log('waiting for cb reply for ' + pageDef.url);
 					pageDef.cb(req, res, function(b, jsFiles){
 						if(arguments.length === 0){
-							console.log('Error 500, Internal Server Error - Reference Code: ' + res.uid);
+							log('Error 500, Internal Server Error - Reference Code: ' + res.uid);
 							res.send('Error 500, Internal Server Error - Reference Code: ' + res.uid, 500);
 						}else{
-							console.log('got cb reply');
+							log('got cb reply');
 							finish(req, res, b, jsFiles);
 						}
 					});
@@ -563,14 +585,14 @@ function prepare(config, cb){
 				req.uid = uid;
 				res.uid = uid;
 				//console.log(JSON.stringify(Object.keys(req)));
-				console.log('+' + type + ' ' + req.url + ' ' + path + ' ' + uid);
+				log('+' + type + ' ' + req.url + ' ' + path + ' ' + uid);
 				var startTime = Date.now()
 
 				var oldEnd = res.end;
 				res.end = function(){
 					oldEnd.apply(this, Array.prototype.slice.call(arguments));
 					var delay = Date.now() - startTime
-					console.log('-' + type + ' ' + req.url + ' ' + path + ' ' + uid + ' ' + delay +'ms');
+					log('-' + type + ' ' + req.url + ' ' + path + ' ' + uid + ' ' + delay +'ms');
 				}
 			
 				cb(req, res);
@@ -605,13 +627,13 @@ function prepare(config, cb){
 		
 		
 		wrapper.serveJavascriptFile = function(app, path){
-			console.log('path: ' + path)
+			log('path: ' + path)
 			_.assertLength(arguments, 2)
 			//files.loadJsFile(app, path, name, hostFile, unhostFile, function(){
 			if(path.indexOf('.js') === path.length-3){
 				path = path.substr(0, path.length-3)
 			}
-			jsFiles.load(app, path, hostFile, unhostFile, function(err){
+			jsFiles.load(app, path, hostFile.bind(undefined, app), unhostFile, log, function(err){
 				if(err) throw err//_.errout('cannot find file to be served as "' + name + '" at path: ' + path);
 				//TODO
 			});				
@@ -638,16 +660,16 @@ function prepare(config, cb){
 				if(hashStr !== hash){
 
 					url = urlPrefix+hashStr+'/'+name+'.js';
-					hostFile(url, 'js', jsStr, gzipped);
+					hostFile(app, url, 'js', jsStr, gzipped);
 				
 					zlib.gzip(jsStr, function(err, data){
 						if(err) _.errout(err);
 						gzipped = data;
-						console.log('zipped ' + name + ' ' + data.length + ' from ' + jsStr.length + ' chars');
+						log('zipped ' + name + ' ' + data.length + ' from ' + jsStr.length + ' chars');
 					
 						hash = hashStr;
 
-						hostFile(url, 'js', jsStr, gzipped);
+						hostFile(app, url, 'js', jsStr, gzipped);
 					});
 				}
 				
@@ -656,6 +678,38 @@ function prepare(config, cb){
 			});
 		}
 	
+		wrapper.serveJson = function(app, name, cb){
+		
+			var urlPrefix = '/json/' + app.name +'/';
+			var url;
+			var hash;
+			var gzipped;
+			cb(function(jsonStr){
+
+				//jsonStr = InDebugEnvironment ? jsonStr : uglify(jsonStr);
+
+				
+				var hashStr = utilFiles.hashStr(jsonStr);
+				if(hashStr !== hash){
+
+					url = urlPrefix+hashStr+'/'+name+'.json';
+					hostFile(app, url, 'json', jsonStr, gzipped);
+				
+					zlib.gzip(jsonStr, function(err, data){
+						if(err) _.errout(err);
+						gzipped = data;
+						log('zipped ' + name + ' ' + data.length + ' from ' + jsonStr.length + ' chars');
+					
+						hash = hashStr;
+
+						hostFile(app, url, 'json', jsonStr, gzipped);
+					});
+				}
+				
+				return url;
+
+			});
+		}
 		return wrapper;
 	}
 
@@ -669,7 +723,7 @@ function prepare(config, cb){
 		certificate = fs.readFileSync(process.cwd() + '/certificate.pem').toString();
 		gotHttpsStuff = true;
 	}catch(e){
-		console.log("WARNING: Https access disabled, since one or both of privatekey.pem and certificate.pem were not found or could not be read");
+		log("WARNING: Https access disabled, since one or both of privatekey.pem and certificate.pem were not found or could not be read");
 	}	
 	
 	var localApp = express.createServer(
@@ -737,7 +791,7 @@ function prepare(config, cb){
 	}
 
 
-	
+	/*
 	function applyIf(name, localApp, app, moduleName){
 		var list = app[name + '__s'];
 		_.each(list, function(arguments){
@@ -746,15 +800,20 @@ function prepare(config, cb){
 			}
 		});
 	}
+
+	_.each(methods, function(method){
+		applyIf(method, localApp, app, config.name);
+	});*/
 	
+	/*
 	function include(localApp, app, moduleName){
 		_.each(methods, function(method){
 			applyIf(method, localApp, app, moduleName);
 		});
-	}
+	}*/
 	
 	var local = {
-		include: function(moduleName, originalMsgCb){
+		/*include: function(moduleName, originalMsgCb){
 		
 			//TODO include should walk the entire tree, then include the flattened list in order of first visit (to avoid duplicates)
 
@@ -785,9 +844,22 @@ function prepare(config, cb){
 					console.log('included module ' + moduleName);
 				});
 			}
-		},
+		},*/
 		getServer: function(){
 			return localApp;
+		},
+		getSecureServer: function(){
+			if(localSecureApp){
+				return localSecureApp;
+			}else{
+				var other = {}
+				Object.keys(localApp).forEach(function(key){
+					other[key] = function(){
+						log('disabling secure component: ' + key + ' ' + require('sys').inspect(arguments))
+					}
+				})
+				return other
+			}
 		},
 		
 		getPort: function(){
@@ -830,7 +902,7 @@ function prepare(config, cb){
 
 		var cdl = _.latch(1 + (gotHttpsStuff ? 1 : 0), function(){
 
-			console.log('\nlistening on port ' + config.port + httpsPart + '\n\n');
+			log('\nlistening on port ' + config.port + httpsPart + '\n\n');
 			if(readyCb) readyCb();
 		});
 		
@@ -853,7 +925,7 @@ function prepare(config, cb){
 		
 		
 		return function(cb){
-			console.log('matterhorn app ' + config.name + ' shutting down as requested.');
+			log('matterhorn app ' + config.name + ' shutting down as requested.');
 			localApp.close();
 			if(localSecureApp) localSecureApp.close();
 			if(cb) cb();
@@ -863,7 +935,7 @@ function prepare(config, cb){
 	cb(local, after);
 }
 
-exports.prepare = function(config, cb){ prepare(config, cb);}
+//exports.prepare = function(config, cb){ prepare(config, cb);}
 
 
 

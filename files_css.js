@@ -14,11 +14,11 @@ var urlsForCss = {}
 
 //hostFile(url, type, content, gzippedContent)
 //unhostFile(url)
-exports.load = function(app, name, hostFile, unhostFile, imageryFunction, cb){
-	_.assertLength(arguments, 6)
+exports.load = function(app, name, hostFile, unhostFile, imageryFunction, logger, cb){
+	_.assertLength(arguments, 7)
 
-	var resolvedName = reqs.resolve(app, name, 'css')
-	loadAndWrapCss(resolvedName.name, resolvedName.module, hostFile, unhostFile, imageryFunction, function(err, res){
+	var resolvedName = reqs.resolve(app, name, 'css', logger)
+	loadAndWrapCss(resolvedName.name, resolvedName.module, hostFile, unhostFile, imageryFunction, logger, function(err, res){
 		if(err){ cb(err); return}
 		
 		function includeFunction(){
@@ -87,7 +87,7 @@ function transformStylusToCss(content, name, imageryFunction, cb){
 	}, cb);
 }
 
-var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, imageryFunction, cb){
+var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, imageryFunction, log, cb){
 	_.assertString(path)
 	
 	var urls = {}
@@ -95,7 +95,7 @@ var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, im
 	var lastModTime;
 	fs.watchFile(path, function (curr, prev) {
 		if(curr.mtime > prev.mtime){
-			console.log('updating file: ' + path);
+			log('updating file: ' + path);
 
 			lastModTime = curr.mtime
 			refresh(err, function(res){
@@ -131,7 +131,7 @@ var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, im
 							url: '/static/'+hash+'/'+name
 						}
 					
-						console.log('loaded ' + path + ' -> ' + result.url)
+						log('loaded ' + path + ' -> ' + result.url)
 
 						if(oldWrappedCss[path]){
 							unhostFile(oldWrappedCss[path].url);
