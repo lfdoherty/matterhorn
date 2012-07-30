@@ -32,7 +32,7 @@ function getMimeType(type){
 
 var quicklog = require('quicklog')
 
-var log = quicklog.make('matterhorn')
+var log = quicklog.make('matterhorn/main')
 
 //var apps = {};
 //var claimed = {};
@@ -53,7 +53,7 @@ function alog(appName, type, msg){
 	_.assertString(appName);
 	var key = appName+':'+type;
 	if(alogs[key] === undefined){
-		alogs[key] = quicklog.make(appName + '-'+type)//fs.createWriteStream(appName + '-' + type + '.log');
+		alogs[key] = quicklog.make('matterhorn/'+appName + '-'+type)//fs.createWriteStream(appName + '-' + type + '.log');
 	}
 	alogs[key](msg);
 }
