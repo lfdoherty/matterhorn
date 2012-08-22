@@ -98,10 +98,10 @@ var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, im
 			log('updating file: ' + path);
 
 			lastModTime = curr.mtime
-			refresh(err, function(res){
-				if(err) throw err
+			refresh(function(res){
+				//if(err) throw err
 				if(lastModTime === curr.mtime){
-					loadAndWrapCss.replace(path, [res])
+					loadAndWrapCss.refresh(path, app)//(path, [res])
 				}
 			})
 		}

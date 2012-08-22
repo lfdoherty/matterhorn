@@ -171,7 +171,7 @@ function resolveRequire(currentModule, req, special, log, currentPath, currentNa
 				console.log(e3)
 				try{
 					fakeResolve(currentModule.module, rr, 'js')
-					console.log('managed to resolve module')
+					console.log('managed to resolve module: ' + rr)
 				}catch(e2){
 					console.log(e2)
 					throw new Error('cannot even resolve require module: ' + rr + ' of ' + req)
