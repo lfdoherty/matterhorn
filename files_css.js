@@ -89,6 +89,7 @@ function transformStylusToCss(content, name, imageryFunction, cb){
 
 var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, imageryFunction, log, cb){
 	_.assertString(path)
+	_.assertFunction(log)
 	
 	var urls = {}
 	
@@ -128,7 +129,8 @@ var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, im
 						result = {
 							unzipped: changedSource,
 							zipped: data,
-							url: '/static/'+hash+'/'+name
+							url: '/static/'+hash+'/'+name,
+							included: includedUrls
 						}
 					
 						log('loaded ' + path + ' -> ' + result.url)
@@ -150,10 +152,10 @@ var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, im
 		
 			requirements.forEach(function(req){
 
-				var r = reqs.resolve(app, app.dir, req, 'css')
+				var r = reqs.resolve(app, req, 'css', log)
 
-				loadAndWrapCss(r.name, r.module, function(rm){
-					rm.included.forEach(function(url){includedUrls[url] = true;})
+				loadAndWrapCss(r.name, r.module,  hostFile, unhostFile, imageryFunction, log, function(rm, km){
+					Object.keys(km.included).forEach(function(url){includedUrls[url] = true;})
 					reqCdl()
 				})
 

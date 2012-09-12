@@ -13,6 +13,8 @@ var u = require('./util')
 var urlsForJs = {}
 var jsMappings = {}
 
+var pathHashSuffix = {}
+
 //hostFile(url, type, content, gzippedContent)
 //unhostFile(url)
 exports.load = function(app, jsName, hostFile, unhostFile, logger, cb){
@@ -25,13 +27,22 @@ exports.load = function(app, jsName, hostFile, unhostFile, logger, cb){
 		//console.log('here: ' + resolvedName.name)
 		if(err){ cb(err); return}
 		function includeFunction(){
-			//var urlLists = urlsForJs[resolvedName.name];
+			var urlLists = urlsForJs[resolvedName.name];
 			//var urls = []
 			//console.log('including: ' + resolvedName.name + ' ' + require('util').inspect(urlLists, 6))
 			
-			var all = getAll(urlsForJs[resolvedName.name])			
-			all.unshift(headerUrls[resolvedName.name])
-			return all
+			var all = getAll(urlsForJs[resolvedName.name])
+			//all.unshift(headerUrls[resolvedName.name])
+			var real = [headerUrls[resolvedName.name].url+headerHashes[resolvedName.name]]
+			for(var i=0;i<all.length;++i){
+				var a = all[i]
+				var full = a.url+pathHashSuffix[a.path]
+				if(real.indexOf(full) === -1){
+					//_.errout('duplicate src include: ' + full)
+					real.push(full)
+				}
+			}
+			return real
 		}
 		
 		cb(undefined, includeFunction)
@@ -64,6 +75,7 @@ function getAll(lists){
 var oldWrappedJs = {}
 
 var headerUrls = {}
+var headerHashes = {}
 function computeHeader(hostFile, unhostFile, path, name){
 	var all = getAll(jsMappings[path])
 	var headerSource = ''
@@ -74,14 +86,16 @@ function computeHeader(hostFile, unhostFile, path, name){
 		headerSource += '' + symbol + '._module_wrapper = {parent: {exports: window}, exports: ' + symbol + '};\n'
 	})
 	var hash = u.hashStr(headerSource)
-	var headerUrl = '/static/h/'+hash+'/'+name.substr(0, name.length-3)+'_header.js'
-	var oldHeaderUrl = headerUrls[path]
-	if(oldHeaderUrl) unhostFile(oldHeaderUrl)
+	var headerUrl = '/static/h/'+name.substr(0, name.length-3)+'_header.js?h='+hash
+	var hostUrl = '/static/h/'+name.substr(0, name.length-3)+'_header.js'
+	headerHashes[path] = '?h='+hash
+	//var oldHeaderUrl = headerUrls[path]
+	//if(oldHeaderUrl) unhostFile(oldHeaderUrl)
 	zlib.gzip(headerSource, function(err, zippedHeader){
 		if(err) throw err;
-		hostFile(headerUrl, 'js', headerSource, zippedHeader)
+		hostFile(hostUrl, 'js', headerSource, zippedHeader)
 	})
-	headerUrls[path] = headerUrl
+	headerUrls[path] = {url: hostUrl, path: path}//headerUrl
 }
 			
 function getSymbol(path){
@@ -97,7 +111,7 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log
 	
 	var lastModTime;
 	if(oldWrappedJs[path] === undefined){
-		fs.watchFile(path, function (curr, prev) {
+		fs.watchFile(path, {interval: 100}, function (curr, prev) {
 			if(curr.mtime > prev.mtime){
 				log('updating file: ' + path);
 
@@ -113,6 +127,7 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log
 	}
 
 	var name = pathModule.basename(path)
+	//console.log('name: ' + path)
 	var symbolHash = u.hashStr(path)
 	var symbol = '_' + name.replace(/-/gi,'').replace(/\./gi,'_') + symbolHash
 	
@@ -145,10 +160,12 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log
 
 				//console.log('replacing requires ' + path)
 				var hash = u.hashStr(str)
-				result.url = '/static/f/'+hash+'/'+name
+				result.url = '/static/f/'+name+'?h='+hash
+				result.hostUrl = '/static/f/'+name
+				pathHashSuffix[path] = '?h='+hash
 				var changedSource = reqs.replaceRequires(str, mapping)
 				
-				selfUrlList[0] = result.url
+				selfUrlList[0] = {url: result.hostUrl, path: path}
 				
 				var wrappedSource = 
 					'(function(exports, module, global){\n' + 
@@ -169,9 +186,9 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log
 					
 					//console.log('loaded ' + path + ' -> ' + result.url)
 
-					if(oldWrappedJs[path]){
-						var oldUrl = oldWrappedJs[path].url
-						unhostFile(oldUrl);
+					/*if(oldWrappedJs[path]){
+						//var oldUrl = oldWrappedJs[path].hostUrl
+						//unhostFile(oldUrl);
 						var kk = Object.keys(urlsForJs)
 						kk.forEach(function(k){
 							var urls = urlsForJs[k]
@@ -180,10 +197,29 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log
 								urls.splice(ii, 1, result.url)
 							}
 						})
+					}*/
+					var hoster = oldWrappedJs[path]
+						
+					if(hoster){
+						//console.log('refreshed hosted content for ' + result.hostUrl)
+						hoster(wrappedSource, data)
+						//var kk = Object.keys(urlsForJs)
+						//var oldUrl = hoster.url
+						//console.log(require('util').inspect(urlsForJs))
+						/*kk.forEach(function(k){
+							var urls = urlsForJs[k]
+							var ii = urls.indexOf(oldUrl)
+							if(ii !== -1){
+								console.log(oldUrl + ' -> ' + result.url)
+								urls.splice(ii, 1, result.url)
+							}
+						})*/
+					}else{
+						hoster = oldWrappedJs[path] = hostFile(result.hostUrl, 'js', wrappedSource, data)
 					}
-					hostFile(result.url, 'js', wrappedSource, data)
+					//hoster.url = result.url
 
-					oldWrappedJs[path] = result
+					//oldWrappedJs[path] = result
 					
 					cb(undefined, result)
 				})
@@ -205,6 +241,7 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log
 				var firstTime = true
 				
 				mapping[r.originalName] = getSymbol(r.name)
+				//console.log('name: ' + r.name)
 
 				var urlsForOther = urlsForJs[r.name]
 				if(urlsForOther === undefined) urlsForOther = urlsForJs[r.name] = []
@@ -215,7 +252,9 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log
 					_.assertString(r.originalName)
 
 					_.assertArray(urlsForOther)
-
+					
+					_.assertArray(jsMappings[r.name])
+					
 					includedMappings.push(jsMappings[r.name])
 				})
 

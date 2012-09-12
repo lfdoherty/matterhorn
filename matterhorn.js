@@ -318,7 +318,9 @@ function prepare(config, cb){
 		
 			var middle = '';
 			
-			includeJs().forEach(function(url){
+			var toInclude = includeJs()
+			//console.log(JSON.stringify(toInclude, null, 2))
+			toInclude.forEach(function(url){
 				middle += '<script type="text/javascript" src="' + config.prefix + url + '"></script>';
 			});
 
@@ -396,6 +398,10 @@ function prepare(config, cb){
 						serveFile(req, res, type, hostedContent[url], hostedZippedContent[url]);
 					}
 				});
+			}
+			return function(newContent, newGzippedContent){
+				hostedContent[url] = newContent
+				hostedZippedContent[url] = newGzippedContent
 			}
 		}
 		function unhostFile(url){
