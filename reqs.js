@@ -85,7 +85,7 @@ function insertPath(req, special){
 	return d + '/' + special + '/' + b
 }
 
-var firefoxModuleBlacklist = ['timers', 'xhr']
+var firefoxModuleBlacklist = ['timers', 'xhr', 'xmlhttprequest', 'ws']
 
 function resolveRequire(currentModule, req, special, log, currentPath, currentName){
 	_.assert(arguments.length >= 4)

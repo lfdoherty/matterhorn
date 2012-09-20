@@ -30,6 +30,8 @@ function getMimeType(type){
 	}
 }
 
+var http = require('http')
+
 var quicklog = require('quicklog')
 
 var log = quicklog.make('matterhorn/main')
@@ -391,7 +393,7 @@ function prepare(config, cb){
 				hosted[url] = true;
 
 				wrapper.get(app, url, function(req, res){
-
+				
 					if(unhosted[url]){
 						res.send(410);
 					}else{
@@ -590,7 +592,7 @@ function prepare(config, cb){
 			path = wrapper.getSilent.apply(undefined, arguments);
 			//console.log(config.port + ' ' + (wrapper.isSecure ? 'https ' : 'http ') + colourize(app.name, cyan) + ' get ' + colourize(path, green));
 			
-			alog(appName,'get', config.port + ' ' + (wrapper.isSecure ? 'https ' : 'http ') + app.name + ' get ' + path);
+			alog(appName,'get', config.port + ' ' + (wrapper.isSecure ? 'https' : 'http') + ' get ' + path);
 		}
 		
 		function makeRequestCbWrapper(path, type, cb){
@@ -638,7 +640,7 @@ function prepare(config, cb){
 			post.apply(wrapper, args);
 			//console.log(config.port + ' ' + (wrapper.isSecure ? 'https ' : 'http ') + colourize(app.name, cyan) + ' post ' + colourize(path, green));
 			//alog(appName, 'post', config.port + ' ' + (wrapper.isSecure ? 'https ' : 'http ') + colourize(app.name, cyan) + ' post ' + colourize(path, green));
-			alog(appName, 'post', config.port + ' ' + (wrapper.isSecure ? 'https ' : 'http ') + app.name + ' post ' + path);
+			alog(appName, 'post', config.port + ' ' + (wrapper.isSecure ? 'https' : 'http') + ' post ' + path);
 		}
 		
 		
@@ -663,7 +665,7 @@ function prepare(config, cb){
 		
 		wrapper.serveJavascript = function(app, name, cb){
 		
-			var urlPrefix = '/js/' + app.name +'/';
+			var urlPrefix = '/js/'
 			var url;
 			var hash;
 			var gzipped;
@@ -695,11 +697,12 @@ function prepare(config, cb){
 		}
 	
 		wrapper.serveJson = function(app, name, cb){
-		
-			var urlPrefix = '/json/' + app.name +'/';
+			//_.assertString(app.name)
+			var urlPrefix = '/json/'// + app.name +'/';
 			var url;
 			var hash;
 			var gzipped;
+
 			cb(function(jsonStr){
 
 				//jsonStr = InDebugEnvironment ? jsonStr : uglify(jsonStr);
@@ -742,10 +745,10 @@ function prepare(config, cb){
 		log("WARNING: Https access disabled, since one or both of privatekey.pem and certificate.pem were not found or could not be read");
 	}	
 	
-	var localApp = express.createServer()
+	var localApp = express()//.createServer()
 	localApp.use(express.bodyParser())
 	localApp.use(express.cookieParser())
-
+	
 	localApp.settings.env = envType;
 	
 	localApp.settings.port = config.port;
@@ -778,20 +781,25 @@ function prepare(config, cb){
 	}
 	
 	if(gotHttpsStuff){
+		/*
 		var localSecureApp = express.createServer({key: privateKey, cert: certificate},
 			express.bodyParser()
 		  , express.cookieParser());
-
+		 */
+		var localSecureApp = express({key: privateKey, cert: certificate})
+		localSecureApp.use(express.bodyParser())
+		localSecureApp.use(express.cookieParser());
+		  
 		localApp.settings.securePort = config.securePort;
 
-		localApp.configure(function(){
+		//localApp.configure(function(){
 			localApp.use(express.errorHandler({ dumpExceptions: true, showStack: true }));
-		});
+		//});
 		localSecureApp.settings.env = envType;
 
-		localSecureApp.configure(function(){
+		//localSecureApp.configure(function(){
 			localSecureApp.use(express.errorHandler({ dumpExceptions: true, showStack: true }));
-		});
+		//});
 
 		makeExpressWrapper(localSecureApp);
 
@@ -805,62 +813,11 @@ function prepare(config, cb){
 			localSecureApp.post(exports, '/serverchanged', serverChangedCb);
 		}
 	}
-
-
-	/*
-	function applyIf(name, localApp, app, moduleName){
-		var list = app[name + '__s'];
-		_.each(list, function(arguments){
-			if(arguments[0].name === moduleName){
-				localApp[name].apply(localApp, arguments);
-			}
-		});
+	
+	localApp.getPort = function(){
+		return config.port;
 	}
-
-	_.each(methods, function(method){
-		applyIf(method, localApp, app, config.name);
-	});*/
-	
-	/*
-	function include(localApp, app, moduleName){
-		_.each(methods, function(method){
-			applyIf(method, localApp, app, moduleName);
-		});
-	}*/
-	
 	var local = {
-		/*include: function(moduleName, originalMsgCb){
-		
-			//TODO include should walk the entire tree, then include the flattened list in order of first visit (to avoid duplicates)
-
-			var all = {};		
-			function msg(n){
-				all[n] = true;
-			}
-			
-			msgCb = originalMsgCb || msg;
-		
-			var application = getApplication(moduleName);
-			if(application === undefined){
-				_.errout('cannot find application to include: ' + moduleName);
-			}
-			var reqs = application.requirements;
-			if(reqs){
-				_.each(reqs, function(reqModuleName){
-					console.log(colourize(moduleName, cyan) + ' including required module ' + colourize(reqModuleName, cyan));
-					local.include(reqModuleName, msgCb);
-				});
-			}
-			include(localApp, app, moduleName);
-			if(gotHttpsStuff) include(localSecureApp, secureApp, moduleName);
-			
-			if(!originalMsgCb){
-				console.log('loaded module ' + moduleName);
-				_.each(_.keys(all), function(moduleName){
-					console.log('included module ' + moduleName);
-				});
-			}
-		},*/
 		getServer: function(){
 			return localApp;
 		},
@@ -892,6 +849,14 @@ function prepare(config, cb){
 		}
 	}	
 
+	if(config.localOnly){
+		var s = http.createServer(localApp)
+		localApp.getServer = function(){return s;}
+	}else{
+		var s = http.createServer(localApp)
+		localApp.getServer = function(){return s;}
+	}
+	
 	function after(readyCb){	
 
 		localApp.javascriptRedirectToSecure = function(res, url){
@@ -919,13 +884,16 @@ function prepare(config, cb){
 		var cdl = _.latch(1 + (gotHttpsStuff ? 1 : 0), function(){
 
 			log('\nlistening on port ' + config.port + httpsPart + '\n\n');
+			//console.log('\nlistening on port ' + config.port + httpsPart + '\n');
 			if(readyCb) readyCb();
 		});
 		
 		if(config.localOnly){
-			localApp.listen(config.port, '127.0.0.1', cdl);
+			//localApp.listen(config.port, '127.0.0.1', cdl);
+			s.listen(config.port, '127.0.0.1', cdl);
 		}else{
-			localApp.listen(config.port, cdl);
+			//localApp.listen(config.port, cdl);
+			s.listen(config.port, cdl);
 		}
 		var httpsPart = '';
 		
