@@ -91,12 +91,13 @@ var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, im
 	_.assertString(path)
 	_.assertFunction(log)
 	
-	var urls = {}
+	//var urls = {}
 	
 	var lastModTime;
-	fs.watchFile(path, function (curr, prev) {
+	fs.watchFile(path, {interval: 100}, function (curr, prev) {
 		if(curr.mtime > prev.mtime){
 			log('updating file: ' + path);
+			//console.log('updating file: ' + path);
 
 			lastModTime = curr.mtime
 			refresh(function(res){
@@ -109,8 +110,10 @@ var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, im
 	});
 	refresh(cb)
 	function refresh(cb){
+		u.readFile.clear(path)
 		u.readFile(path, function(cssSrc){
 			var requirements = extractCssRequires(cssSrc)
+			//console.log('read src: ' + cssSrc)
 		
 			var includedUrls = {}
 
@@ -119,6 +122,7 @@ var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, im
 				var name = pathModule.basename(path)
 				
 				transformStylusToCss(cssSrc, name, imageryFunction, function(changedSource){
+					//console.log('changedSrc: ' + changedSource)
 				
 					var hash = u.hashStr(changedSource)
 					var symbol = hash + '_' + name.substr(0, name.length-3)
@@ -164,12 +168,12 @@ var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, im
 	}
 })
 
-
+/*
 var openJs = _.memoizeAsync(function(path, cb){
 	fs.readFile(path, 'utf8', function(err, str){
 		if(err) throw err;
 		cb(str)
 	})
-})
+})*/
 
 
