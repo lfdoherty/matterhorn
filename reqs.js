@@ -1,7 +1,8 @@
 
 var pathModule = require('path')
 
-exports.extractRequires = extractRequires
+exports.extractRequires = extractJsRequires
+exports.extractFragmentRequires = extractFragmentRequires
 exports.replaceRequires = replaceRequires
 exports.resolve = resolveRequire
 
@@ -15,10 +16,16 @@ function extractReqFromLine(line){
 	var ri = line.indexOf('require(') + 'require('.length;
 	var re = line.indexOf(')', ri)
 	var reqString = line.substring(ri, re)
-	//console.log('reqString: ' + reqString)
 	reqString = trim(reqString)
 	reqString = reqString.substr(1, reqString.length-2)
-	//console.log('reqString after processing: ' + reqString)
+	return reqString
+}
+function extractFragmentReqFromLine(line){
+	var ri = line.indexOf('requireFragment(') + 'requireFragment('.length;
+	var re = line.indexOf(')', ri)
+	var reqString = line.substring(ri, re)
+	reqString = trim(reqString)
+	reqString = reqString.substr(1, reqString.length-2)
 	return reqString
 }
 function lineIsRequire(line){
@@ -26,14 +33,19 @@ function lineIsRequire(line){
 	var ci = line.indexOf('//')
 	return (ri !== -1 && (ci === -1 || ci > ri))
 }
-function extractRequires(str){
+function lineIsFragmentRequire(line){
+	var ri = line.indexOf('requireFragment(')
+	var ci = line.indexOf('//')
+	return (ri !== -1 && (ci === -1 || ci > ri))
+}
+function extractRequires(str, f, isF){
 	var requires = {}
 
 	var lines = str.split('\n');
 	for(var i=0;i<lines.length;++i){
 		var line = lines[i];
-		if(lineIsRequire(line)){
-			var reqString = extractReqFromLine(line)
+		if(isF(line)){
+			var reqString = f(line)//extractReqFromLine(line)
 			requires[reqString] = true
 		}
 	}
@@ -42,14 +54,19 @@ function extractRequires(str){
 	
 	return res
 }
-
-function replaceRequires(str, substitutionNames){
+function extractJsRequires(str){
+	return extractRequires(str, extractReqFromLine, lineIsRequire)
+}
+function extractFragmentRequires(str){
+	return extractRequires(str, extractFragmentReqFromLine, lineIsFragmentRequire)
+}
+function replaceRequires(str, substitutionNames, fragmentSubstitutionNames){
 
 	var lines = str.split('\n');
 	for(var i=0;i<lines.length;++i){
 		var line = lines[i];
 		if(lineIsRequire(line)){
-			if(line.indexOf('var ') === 0){
+			if(line.trim().indexOf('var') === 0){
 				var reqName = extractReqFromLine(line)
 				var after = line.substr(line.indexOf(')')+1)
 				if(firefoxModuleBlacklist.indexOf(reqName) !== -1){
@@ -63,6 +80,21 @@ function replaceRequires(str, substitutionNames){
 				}
 				_.assertDefined(sub)
 				lines[i] = line.substr(0, line.indexOf('=')) + ' = '+sub+after;
+			}else{
+				lines[i] = '';
+			}
+		}else if(lineIsFragmentRequire(line)){
+			if(line.trim().indexOf('var') === 0){
+				var reqName = extractFragmentReqFromLine(line)
+				var after = line.substr(line.indexOf(')')+1)
+				//if(after.trim() !== '') throw new Error('may be error introduced by fragment substitution, cannot parse line safely: ' + line)
+				var sub = fragmentSubstitutionNames[reqName]
+				if(sub === undefined){
+					console.log('got ' + JSON.stringify(fragmentSubstitutionNames))
+					throw new Error('but cannot find required fragment: ' + reqName)
+				}
+				_.assertDefined(sub)
+				lines[i] = line.substr(0, line.indexOf('=')) + ' = ' + sub + ';'+after;
 			}else{
 				lines[i] = '';
 			}
@@ -170,7 +202,7 @@ function resolveRequire(currentModule, req, special, log, currentPath, currentNa
 			}catch(e3){
 				console.log(e3)
 				try{
-					fakeResolve(currentModule.module, rr, 'js')
+					fakeResolve(currentModule.module, rr, special)
 					console.log('managed to resolve module: ' + rr)
 				}catch(e2){
 					console.log(e2)

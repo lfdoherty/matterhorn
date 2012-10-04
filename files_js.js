@@ -6,6 +6,8 @@ var fs = require('fs')
 
 var _ = require('underscorem')
 
+var fragments = require('./files_fragments')
+
 var reqs = require('./reqs')
 
 var u = require('./util')
@@ -15,8 +17,9 @@ var jsMappings = {}
 
 var pathHashSuffix = {}
 
-//hostFile(url, type, content, gzippedContent)
-//unhostFile(url)
+var fragmentGetters = {}
+var fragmentMappings = {}
+
 exports.load = function(app, jsName, hostFile, unhostFile, logger, cb){
 	_.assertLength(arguments, 6)
 
@@ -28,21 +31,42 @@ exports.load = function(app, jsName, hostFile, unhostFile, logger, cb){
 		if(err){ cb(err); return}
 		function includeFunction(){
 			var urlLists = urlsForJs[resolvedName.name];
-			//var urls = []
-			//console.log('including: ' + resolvedName.name + ' ' + require('util').inspect(urlLists, 6))
 			
 			var all = getAll(urlsForJs[resolvedName.name])
-			//all.unshift(headerUrls[resolvedName.name])
 			var real = [headerUrls[resolvedName.name].url+headerHashes[resolvedName.name]]
 			for(var i=0;i<all.length;++i){
 				var a = all[i]
 				var full = a.url+pathHashSuffix[a.path]
 				if(real.indexOf(full) === -1){
-					//_.errout('duplicate src include: ' + full)
 					real.push(full)
 				}
 			}
 			return real
+		}
+		
+		includeFunction.includeFragments = function(){
+			//TODO
+			//var arr = fragmentUrlsForJs[resolvedName.name] || []
+			var arr = fragmentMappings[resolvedName.name] || []
+			var all = getAll([arr])
+			
+			var res = []
+			all.forEach(function(f){
+				var v = f()
+				v.forEach(function(r){
+					res.push({url: r.url, name: r.name})
+				})// = res.concat(r)
+			})
+			
+			return res
+			/*
+			var res = fragmentGetters[resolvedName.name]()
+			var urls = []
+			res.forEach(function(r){
+				urls.push({url: r.url, name: r.name})
+			})
+			return urls*/
+			//res.forEach(
 		}
 		
 		cb(undefined, includeFunction)
@@ -63,12 +87,12 @@ function getAll(lists){
 		})
 		list.forEach(function(sub){
 			if(!_.isArray(sub) && all.indexOf(sub) === -1){
+				_.assertDefined(sub)
 				all.push(sub)
 			}
 		})
 	}
 	lists.forEach(includeList)
-	//console.log(JSON.stringify(all, null, 2))
 	return all
 }
 
@@ -89,8 +113,6 @@ function computeHeader(hostFile, unhostFile, path, name){
 	var headerUrl = '/static/h/'+name.substr(0, name.length-3)+'_header.js?h='+hash
 	var hostUrl = '/static/h/'+name.substr(0, name.length-3)+'_header.js'
 	headerHashes[path] = '?h='+hash
-	//var oldHeaderUrl = headerUrls[path]
-	//if(oldHeaderUrl) unhostFile(oldHeaderUrl)
 	zlib.gzip(headerSource, function(err, zippedHeader){
 		if(err) throw err;
 		hostFile(hostUrl, 'js', headerSource, zippedHeader)
@@ -151,10 +173,15 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log
 		u.readFile(path, function(str){
 			//console.log('extracting requires ' + path)
 			var requirements = reqs.extractRequires(str)
-		
+			var fragmentRequirements = reqs.extractFragmentRequires(str)
+			
 			var includedMappings = jsMappings[path] = [[symbol]]
+			
+			
+			//var includedFragments = fragmentUrlsForJs[path] = []
 
 			var mapping = {}		
+			var fragmentMapping = {}
 			
 			var reqCdl = _.latch(requirements.length, 500, function(){
 
@@ -163,7 +190,7 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log
 				result.url = '/static/f/'+name+'?h='+hash
 				result.hostUrl = '/static/f/'+name
 				pathHashSuffix[path] = '?h='+hash
-				var changedSource = reqs.replaceRequires(str, mapping)
+				var changedSource = reqs.replaceRequires(str, mapping, fragmentMapping)
 				
 				selfUrlList[0] = {url: result.hostUrl, path: path}
 				
@@ -181,45 +208,15 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log
 
 					//console.log('...done zipping ' + symbol)
 					result.zipped = data
-				
-					
-					
-					//console.log('loaded ' + path + ' -> ' + result.url)
 
-					/*if(oldWrappedJs[path]){
-						//var oldUrl = oldWrappedJs[path].hostUrl
-						//unhostFile(oldUrl);
-						var kk = Object.keys(urlsForJs)
-						kk.forEach(function(k){
-							var urls = urlsForJs[k]
-							var ii = urls.indexOf(oldUrl)
-							if(ii !== -1){
-								urls.splice(ii, 1, result.url)
-							}
-						})
-					}*/
 					var hoster = oldWrappedJs[path]
 						
 					if(hoster){
 						//console.log('refreshed hosted content for ' + result.hostUrl)
 						hoster(wrappedSource, data)
-						//var kk = Object.keys(urlsForJs)
-						//var oldUrl = hoster.url
-						//console.log(require('util').inspect(urlsForJs))
-						/*kk.forEach(function(k){
-							var urls = urlsForJs[k]
-							var ii = urls.indexOf(oldUrl)
-							if(ii !== -1){
-								console.log(oldUrl + ' -> ' + result.url)
-								urls.splice(ii, 1, result.url)
-							}
-						})*/
 					}else{
 						hoster = oldWrappedJs[path] = hostFile(result.hostUrl, 'js', wrappedSource, data)
 					}
-					//hoster.url = result.url
-
-					//oldWrappedJs[path] = result
 					
 					cb(undefined, result)
 				})
@@ -231,36 +228,54 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log
 				computeHeader(hostFile, unhostFile, path, name)
 			}, 500)
 		
-			requirements.forEach(function(req){
-
-				var r = reqs.resolve(app, req, 'js', log, pathModule.dirname(path), path)
-				if(r === undefined){//means reqs.resolve decided it wasn't a valid require statement
-					reqCdl()
-					return
-				}
-				var firstTime = true
-				
-				mapping[r.originalName] = getSymbol(r.name)
-				//console.log('name: ' + r.name)
-
-				var urlsForOther = urlsForJs[r.name]
-				if(urlsForOther === undefined) urlsForOther = urlsForJs[r.name] = []
-				if(allUrls.indexOf(urlsForOther) === -1) allUrls.push(urlsForOther)
-
-				loadAndWrapJs(r.name, r.module, hostFile, unhostFile, log, function(err, rm){
-					if(err) throw err
-					_.assertString(r.originalName)
-
-					_.assertArray(urlsForOther)
-					
-					_.assertArray(jsMappings[r.name])
-					
-					includedMappings.push(jsMappings[r.name])
+			fragments.load(app, fragmentRequirements, hostFile, unhostFile, log, function(err, f){
+				if(err) throw err
+				fragmentGetters[path] = f
+				var res = f()
+				res.forEach(function(e){
+					fragmentMapping[e.originalName] = '__fragment_'+e.shortName+'__'
 				})
 
-				reqCdl()
+				_.assertDefined(fragmentGetters[path])
+				var includedFragments = fragmentMappings[path] = [fragmentGetters[path]]
+
+				//reqCdl()
+				requirements.forEach(function(req){
+
+					var r = reqs.resolve(app, req, 'js', log, pathModule.dirname(path), path)
+					if(r === undefined){//means reqs.resolve decided it wasn't a valid require statement
+						reqCdl()
+						return
+					}
+					var firstTime = true
+				
+					mapping[r.originalName] = getSymbol(r.name)
+					//console.log('name: ' + r.name)
+
+					var urlsForOther = urlsForJs[r.name]
+					if(urlsForOther === undefined) urlsForOther = urlsForJs[r.name] = []
+					if(allUrls.indexOf(urlsForOther) === -1) allUrls.push(urlsForOther)
+
+					loadAndWrapJs(r.name, r.module, hostFile, unhostFile, log, function(err, rm){
+						if(err) throw err
+						_.assertString(r.originalName)
+
+						_.assertArray(urlsForOther)
+					
+						_.assertArray(jsMappings[r.name])
+					
+						includedMappings.push(jsMappings[r.name])
+						_.assertArray(fragmentMappings[r.name])
+						includedFragments.push(fragmentMappings[r.name])
+					})
+
+					reqCdl()
+				})
+				
+				allUrls.push(selfUrlList)			
 			})
-			allUrls.push(selfUrlList)			
+			
+			
 		})
 	}
 })

@@ -16,6 +16,7 @@ var zlib = require('zlib');
 var changedetector = require('./changedetector');
 var jsFiles = require('./files_js')
 var cssFiles = require('./files_css')
+var fragmentFiles = require('./files_fragments')
 var utilFiles = require('./util')
 
 var random = require('seedrandom');
@@ -25,8 +26,9 @@ function getMimeType(type){
 	else if(type === 'css') return 'text/css';
 	else if(type === 'template') return 'text/javascript';
 	else if(type === 'json') return 'application/json';
+	else if(type === 'fragment') return 'text/plain';
 	else{
-		_.errout('mime type unknown for type: ' + type);
+		_.errout('mime type unknown for type(' + type + ')');
 	}
 }
 
@@ -311,12 +313,18 @@ function prepare(config, cb){
 			includeCss().forEach(function(url){
 				header += '<link type="text/css" rel="stylesheet" href="' + config.prefix + url + '"></link>';
 			});
+			//console.log('including fragments')
+			includeJs.includeFragments().forEach(function(e){
+				
+				header += '<script type="text/javascript" src="' + config.prefix + e.url + '"></script>';
+			})
 	
+			var headerEnd = ''
 			if(pageDef.icon){
-				header += '<link rel="shortcut icon" href="' + iconUrl + '" />';
+				headerEnd += '<link rel="shortcut icon" href="' + iconUrl + '" />';
 			}
 
-			header += '</head><body>';
+			headerEnd += '</head><body>'
 		
 			var middle = '';
 			
@@ -338,19 +346,20 @@ function prepare(config, cb){
 			
 			
 			return {
-				header: header,
+				headerStart: header,
+				headerEnd: headerEnd,
 				javascript: middle + loggingJs + jsDetectorCookieJs,
 				footer:footer
 			};
 		}
 
-		
+		/*
 		function renderWrapping(app, expressApp, pageDef, title, wrappedContent){
 	
 			var parts = makeWrappingParts(app, expressApp, pageDef, title);
 			
 			return parts.header + parts.javascript + wrappedContent + parts.footer;
-		}
+		}*/
 
 		function makeTypeCollectionMethod(type){
 			return function(app, externalName, def){
@@ -430,6 +439,7 @@ function prepare(config, cb){
 			
 			var includeJs
 			var includeCss
+			//var includeFragments
 			
 			try{
 			
@@ -453,6 +463,16 @@ function prepare(config, cb){
 				}else{
 					includeCss = function(){return [];}
 				}
+				
+				/*if(pageDef.fragments){
+					console.log('loading fragments')
+					fragmentFiles.load(app, pageDef.fragments, hostFile.bind(undefined,app), unhostFile, log, function(err, includeFragmentsFunc){
+						if(err) throw err
+						includeFragments = includeFragmentsFunc
+					})
+				}else{
+					includeFragments = function(){return [];}
+				}*/
 			}catch(e){
 				sys.debug('error loading page: ' + pageDef.url);
 				throw e;
@@ -505,11 +525,11 @@ function prepare(config, cb){
 					b.urlPrefix = config.prefix || '';
 				
 
-					var content = '\n<script>\n';
+					var variableScript = '\n<script>\n';
 					_.each(b, function(value, attr){
-						content += 'var ' + attr + ' = '  + JSON.stringify(value) + ';\n';
+						variableScript += 'var ' + attr + ' = '  + JSON.stringify(value) + ';\n';
 					});
-					content += '</script>\n';
+					variableScript += '</script>\n';
 
 					var extraJs = '';
 					_.each(jsFiles, function(jsFile){
@@ -522,7 +542,7 @@ function prepare(config, cb){
 					
 					var parts = makeWrappingParts(app, local, pageDef, title, includeJs, includeCss, iconUrl);
 		
-					var html = parts.header + content + parts.javascript + extraJs + parts.footer;
+					var html = parts.headerStart + variableScript + parts.javascript + extraJs + parts.headerEnd + /*parts.javascript + extraJs + */parts.footer;
 
 					res.header('Cache-Control', 'no-cache, no-store')
 					//res.send(html, {'Cache-Control': 'no-cache, no-store'}, 200);
