@@ -87,14 +87,18 @@ function transformStylusToCss(content, name, imageryFunction, cb){
 	}, cb);
 }
 
+var fileWatcher = {}
+
 var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, imageryFunction, log, cb){
 	_.assertString(path)
 	_.assertFunction(log)
 	
 	//var urls = {}
 	
+	if(fileWatcher[path]) fs.unwatchFile(path, fileWatcher[path])
+	
 	var lastModTime;
-	fs.watchFile(path, {interval: 100}, function (curr, prev) {
+	function watcher(curr, prev) {
 		if(curr.mtime > prev.mtime){
 			log('updating file: ' + path);
 			//console.log('updating file: ' + path);
@@ -107,7 +111,9 @@ var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, im
 				}
 			})
 		}
-	});
+	}
+	fileWatcher[path] = watcher
+	fs.watchFile(path, {interval: 100}, watcher);
 	refresh(cb)
 	function refresh(cb){
 		u.readFile.clear(path)
