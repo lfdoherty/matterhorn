@@ -134,8 +134,10 @@ exports.do304IfSafe = function(req, res){
 		return true;
 	}
 }
-function serveFile(req, res, type, content, gzippedContent){
-	_.assertLength(arguments, 5);
+function serveFile(req, res, type, content, gzippedContent, etag){
+	_.assertLength(arguments, 6);
+	_.assertBuffer(content)
+	//_.assertBuffer(content)
 	
 	if(exports.do304IfSafe(req, res)){
 		return;
@@ -160,14 +162,18 @@ function serveFile(req, res, type, content, gzippedContent){
 		res.header('Expires', 'Sat, 28 Apr 2100 10:00:00 GMT')
 		res.header('Content-Type', getMimeType(type) + ';charset=utf-8')
 
+		res.header('ETag', etag)
+		
 		var fileContents;
 
 		var compHeader = req.header('Accept-Encoding');
+		//console.log('accepting: ' + compHeader)
 		if(compHeader && compHeader.indexOf('gzip') !== -1 && gzippedContent !== undefined){
 			fileContents = gzippedContent;
 			//headers['Content-Encoding'] = 'gzip';
 			res.header('Content-Encoding', 'gzip')
 		}else{
+			//console.log('sending unzipped')
 			fileContents = content
 		}
 		
@@ -391,8 +397,9 @@ function prepare(config, cb){
 		var hostedContent = {};
 		var hostedZippedContent = {};
 
-		function hostFile(app, url, type, content, gzippedContent){
-			_.assertLength(arguments, 5)
+		function hostFile(app, url, type, content, gzippedContent, etag){
+			_.assertLength(arguments, 6)
+			_.assertBuffer(content)
 			
 			delete unhosted[url];
 			hostedContent[url] = content;
@@ -406,11 +413,12 @@ function prepare(config, cb){
 					if(unhosted[url]){
 						res.send(410);
 					}else{
-						serveFile(req, res, type, hostedContent[url], hostedZippedContent[url]);
+						serveFile(req, res, type, hostedContent[url], hostedZippedContent[url], etag||'"#"');
 					}
 				});
 			}
 			return function(newContent, newGzippedContent){
+				_.assertBuffer(newContent)
 				hostedContent[url] = newContent
 				hostedZippedContent[url] = newGzippedContent
 			}
@@ -537,7 +545,7 @@ function prepare(config, cb){
 						extraJs += '<script src="' + (jsFile.indexOf('://') === -1 ? b.urlPrefix : '') + jsFile + '"></script>\n';
 					});
 
-					var title =  b.title || pageDef.title || app.name;
+					var title =  b.title || pageDef.title || app.name || ''
 					//console.log('TITLE OPTIONS: ' + b.title + ' ' + pageDef.title + ' ' + app.name);
 					
 					var parts = makeWrappingParts(app, local, pageDef, title, includeJs, includeCss, iconUrl);
@@ -551,7 +559,11 @@ function prepare(config, cb){
 			}
 
 			var args = [app, pageDef.url].concat(pageDef.filters || []).concat(handler);
-			wrapper.get.apply(undefined, args);
+			if(pageDef.method && pageDef.method.toLowerCase() === 'post'){
+				wrapper.post.apply(undefined, args);
+			}else{
+				wrapper.get.apply(undefined, args);
+			}
 		}
 		
 		wrapper.stub = function(){}
@@ -693,21 +705,25 @@ function prepare(config, cb){
 
 				jsStr = InDebugEnvironment ? jsStr : uglify(jsStr);
 
+				var jsBuf = jsStr
+				if(_.isString(jsBuf)) jsBuf = new Buffer(jsBuf)
+
 				
 				var hashStr = utilFiles.hashStr(jsStr);
 				if(hashStr !== hash){
 
 					url = urlPrefix+hashStr+'/'+name+'.js';
-					hostFile(app, url, 'js', jsStr, gzipped);
+					hostFile(app, url, 'js', jsBuf, gzipped, '');
+					//var jsBuf = new Buffer(jsStr)
 				
-					zlib.gzip(jsStr, function(err, data){
+					zlib.gzip(jsBuf, function(err, data){
 						if(err) _.errout(err);
 						gzipped = data;
 						log('zipped ' + name + ' ' + data.length + ' from ' + jsStr.length + ' chars');
 					
 						hash = hashStr;
 
-						hostFile(app, url, 'js', jsStr, gzipped);
+						hostFile(app, url, 'js', jsBuf, gzipped, '');
 					});
 				}
 				
@@ -727,21 +743,23 @@ function prepare(config, cb){
 
 				//jsonStr = InDebugEnvironment ? jsonStr : uglify(jsonStr);
 
+				var jsonBuf = jsonStr
+				if(_.isString(jsonBuf)) jsonBuf = new Buffer(jsonBuf)
 				
 				var hashStr = utilFiles.hashStr(jsonStr);
 				if(hashStr !== hash){
 
 					url = urlPrefix+hashStr+'/'+name+'.json';
-					hostFile(app, url, 'json', jsonStr, gzipped);
+					hostFile(app, url, 'json', jsonBuf, gzipped, '');
 				
-					zlib.gzip(jsonStr, function(err, data){
+					zlib.gzip(jsonBuf, function(err, data){
 						if(err) _.errout(err);
 						gzipped = data;
 						log('zipped ' + name + ' ' + data.length + ' from ' + jsonStr.length + ' chars');
 					
 						hash = hashStr;
 
-						hostFile(app, url, 'json', jsonStr, gzipped);
+						hostFile(app, url, 'json', jsonBuf, gzipped, '');
 					});
 				}
 				

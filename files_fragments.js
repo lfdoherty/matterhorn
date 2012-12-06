@@ -94,7 +94,7 @@ var loadAndWrap = _.memoizeAsync(function(path, app, hostFile, unhostFile, log, 
 
 			zlib.gzip(wrappedText, function(err, data){
 				if(err) throw err;
-				hostFile(url, 'fragment', wrappedText, data)
+				hostFile(url, 'fragment', new Buffer(wrappedText), data, '')
 			})
 		
 			urlFor[path] = url

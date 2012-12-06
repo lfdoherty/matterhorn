@@ -148,7 +148,7 @@ var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, im
 						if(oldWrappedCss[path]){
 							unhostFile(oldWrappedCss[path].url);
 						}
-						hostFile(result.url, 'css', changedSource, data)
+						hostFile(result.url, 'css', new Buffer(changedSource), data, '')
 
 						includedUrls[result.url] = true
 						urlsForCss[path] = Object.keys(includedUrls)

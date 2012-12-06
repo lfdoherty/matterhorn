@@ -115,7 +115,7 @@ function computeHeader(hostFile, unhostFile, path, name){
 	headerHashes[path] = '?h='+hash
 	zlib.gzip(headerSource, function(err, zippedHeader){
 		if(err) throw err;
-		hostFile(hostUrl, 'js', headerSource, zippedHeader)
+		hostFile(hostUrl, 'js', new Buffer(headerSource), zippedHeader, '')
 	})
 	headerUrls[path] = {url: hostUrl, path: path}//headerUrl
 }
@@ -195,12 +195,14 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log
 				selfUrlList[0] = {url: result.hostUrl, path: path}
 				
 				var wrappedSource = 
-					'(function(exports, module, global){\n' + 
+					'(function(exports, module, global){' + 
 					changedSource +
 					'})(' + symbol + ', ' + symbol + '._module_wrapper,window)\n'+
 					'if('+symbol+'._module_wrapper.exports !== ' + symbol + ') ' + symbol+'='+symbol+'._module_wrapper.exports;'
 					
 				result.unzipped = wrappedSource
+				
+				wrappedSource = new Buffer(wrappedSource)
 				
 				//console.log('zipping ' + symbol)
 				zlib.gzip(wrappedSource, function(err, data){
@@ -215,7 +217,7 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log
 						//console.log('refreshed hosted content for ' + result.hostUrl)
 						hoster(wrappedSource, data)
 					}else{
-						hoster = oldWrappedJs[path] = hostFile(result.hostUrl, 'js', wrappedSource, data)
+						hoster = oldWrappedJs[path] = hostFile(result.hostUrl, 'js', wrappedSource, data, '')
 					}
 					
 					cb(undefined, result)
@@ -241,16 +243,30 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log
 
 				//reqCdl()
 				requirements.forEach(function(req){
-
-					var r = reqs.resolve(app, req, 'js', log, pathModule.dirname(path), path)
+				
+					var r
+					
+					//if(req.indexOf('editlookup') !== -1) console.log(':'+req)
+					var isJson = req.indexOf('.json') !== -1
+					if(isJson){//path.length-4){
+						//_.errout('eRWRwerlkwejrewlkrjwelrkjwerlkwje')
+						r = reqs.resolve(app, req.substr(0,req.length-5), 'json', log, pathModule.dirname(path), path)
+					}else{
+						r = reqs.resolve(app, req, 'js', log, pathModule.dirname(path), path)
+					}
+					
 					if(r === undefined){//means reqs.resolve decided it wasn't a valid require statement
 						reqCdl()
 						return
 					}
 					var firstTime = true
 				
-					mapping[r.originalName] = getSymbol(r.name)
-					//console.log('name: ' + r.name)
+					var nameKey = r.originalName
+					if(isJson){
+						nameKey += '.json'
+					}
+					mapping[nameKey] = getSymbol(r.name)
+					//console.log('name: ' + r.originalName)
 
 					var urlsForOther = urlsForJs[r.name]
 					if(urlsForOther === undefined) urlsForOther = urlsForJs[r.name] = []

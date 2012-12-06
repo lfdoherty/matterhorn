@@ -18,6 +18,7 @@ function extractReqFromLine(line){
 	var reqString = line.substring(ri, re)
 	reqString = trim(reqString)
 	reqString = reqString.substr(1, reqString.length-2)
+	
 	return reqString
 }
 function extractFragmentReqFromLine(line){
@@ -73,6 +74,7 @@ function replaceRequires(str, substitutionNames, fragmentSubstitutionNames){
 					lines[i] = line.substr(0, line.indexOf('=')) + ' = window'+after
 					continue
 				}
+				
 				var sub = substitutionNames[reqName]
 				if(sub === undefined){
 					console.log('got ' + JSON.stringify(substitutionNames))
@@ -127,6 +129,7 @@ function resolveRequire(currentModule, req, special, log, currentPath, currentNa
 		log('ignoring browser-side require that may be the name of a module Firefox addons have to include to get basic Javascript functionality for some stupid reason: ' + req)
 		return
 	}
+
 	//console.log('resolve: ' + req)
 	//_.assertLength(arguments, 3)
 	_.assertString(req)
@@ -153,6 +156,7 @@ function resolveRequire(currentModule, req, special, log, currentPath, currentNa
 				originalName: req
 			}
 		}catch(e){
+			//console.log(e)
 			try{
 				var otherRealPath = pathModule.resolve(currentPath, insertPath(req, special))
 				//console.log('+trying: ' + otherRealPath+'.'+special)
