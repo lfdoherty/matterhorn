@@ -1,5 +1,6 @@
 
 var pathModule = require('path')
+var fs = require('fs')
 
 exports.extractRequires = extractJsRequires
 exports.extractFragmentRequires = extractFragmentRequires
@@ -67,23 +68,26 @@ function replaceRequires(str, substitutionNames, fragmentSubstitutionNames){
 	for(var i=0;i<lines.length;++i){
 		var line = lines[i];
 		if(lineIsRequire(line)){
+			var reqName = extractReqFromLine(line)
+			//console.log('processing require line: ' + line + ' ' + reqName)
+			var after = line.substr(line.indexOf(')')+1)
+			if(firefoxModuleBlacklist.indexOf(reqName) !== -1){
+				lines[i] = line.substr(0, line.indexOf('=')) + ' = window'+after
+				continue
+			}
+			var sub = substitutionNames[reqName]
+			if(sub === undefined){
+				console.log('got ' + JSON.stringify(substitutionNames))
+				throw new Error('but cannot find required library: ' + reqName)
+			}
+			
 			if(line.trim().indexOf('var') === 0){
-				var reqName = extractReqFromLine(line)
-				var after = line.substr(line.indexOf(')')+1)
-				if(firefoxModuleBlacklist.indexOf(reqName) !== -1){
-					lines[i] = line.substr(0, line.indexOf('=')) + ' = window'+after
-					continue
-				}
 				
-				var sub = substitutionNames[reqName]
-				if(sub === undefined){
-					console.log('got ' + JSON.stringify(substitutionNames))
-					throw new Error('but cannot find required library: ' + reqName)
-				}
 				_.assertDefined(sub)
 				lines[i] = line.substr(0, line.indexOf('=')) + ' = '+sub+after;
 			}else{
-				lines[i] = '';
+				//lines[i] = '';
+				lines[i] = line.substr(0, line.indexOf('require')) +sub+after;
 			}
 		}else if(lineIsFragmentRequire(line)){
 			if(line.trim().indexOf('var') === 0){
@@ -121,6 +125,22 @@ function insertPath(req, special){
 
 var firefoxModuleBlacklist = ['timers', 'xhr', 'xmlhttprequest', 'ws']
 
+function readInDirOrParents(dir, filename){
+	var originalDir = dir
+	while(true){
+		try{
+			return {data: fs.readFileSync(dir+'/'+filename), dir: dir}
+		}catch(e){
+			if(dir.indexOf('/') !== dir.lastIndexOf('/')){
+				dir = pathModule.dirname(dir)
+			//	console.log('retrying ' + dir)
+			}else{
+				throw new Error('cannot find in dir or parent dirs: ' + originalDir + ' ' + filename)
+			}
+		}
+	}
+}
+
 function resolveRequire(currentModule, req, special, log, currentPath, currentName){
 	_.assert(arguments.length >= 4)
 	_.assertFunction(log)
@@ -137,7 +157,7 @@ function resolveRequire(currentModule, req, special, log, currentPath, currentNa
 	//_.assertString(currentPath)
 	//_.assertDefined(currentModule.module)
 	if(currentModule.module === undefined){
-		_.errout('module used in matterhorn must export its module as .module: ' + JSON.stringify(Object.keys(currentModule)))
+		_.errout('module used in matterhorn must export its module as .module: ' + JSON.stringify(Object.keys(currentModule)) + currentModule.name)
 	}
 	currentPath = currentPath || pathModule.dirname(currentModule.module.filename)
 	
@@ -176,25 +196,61 @@ function resolveRequire(currentModule, req, special, log, currentPath, currentNa
 	}else{
 		var rr = req.indexOf('/') !== -1 ? req.substr(0, req.indexOf('/')) : req
 		var localResolve = currentModule.module.require.resolve
+
+		var h = {}
+		//console.log('requiring from ' + currentModule.module.filename + ' ' + rr)
+		h.module = currentModule.module.require(rr)
+
+
 		try{
-			var h = {}
-			h.module = currentModule.module.require(rr)
-			var moduleDir = pathModule.dirname(h.module.module.filename)
-			if(h.module.base && req === rr){
-				var realPath = pathModule.resolve(moduleDir, h.module.base)+'.'+special
-				return {
-					name: realPath,
-					module: h.module,
-					originalName: req
-				}
+			//console.log('trying: ' + (h.module.module && req === rr))
+			if(h.module.module && req === rr){
+				var moduleDir = pathModule.dirname(h.module.module.filename)
+				/*if(!h.module.module){
+					throw new Error('module which includes client-side javascript should export module in main js file: ' + rr)
+				}*/
+			
+				/*if(h.module.base && req === rr){
+					var realPath = pathModule.resolve(moduleDir, h.module.base)+'.'+special
+					return {
+						name: realPath,
+						module: h.module,
+						originalName: req
+					}
+				}*/
+				//console.log(req + ' <-> ' + rr)
+				//if(req === rr){
+				//var pjPath = moduleDir+'/package.json'
+				//pjPath = findInDirOrParents(moduleDir, 'package.json')
+				//if(moduleDir[moduleDir.length-1] !== '/') moduleDir += '/'
+				var both = readInDirOrParents(moduleDir, 'package.json')
+				var packageStr = both.data
+				moduleDir = both.dir
+				var packageJson = JSON.parse(packageStr)
+				var main = packageJson.jsmain || packageJson.main
+				if(main){
+					var realPath = pathModule.resolve(moduleDir, main)+'.'+special
+					//console.log('realPath: ' + realPath)
+					return {
+						name: realPath,
+						module: h.module,
+						originalName: req
+					}
+				}/*else{
+					console.log('no jsmain or main found: ' + moduleDir+'/package.json ' + JSON.stringify(packageJson))
+				}*/
+				//}
 			}
+			
+			//console.log('loading via fakeResolve: ' + rr + '<->'+req+' '+(h.module.module && req === rr))
+			
 			h.name = fakeResolve(currentModule.module, req, special)
 			h.originalName = req
 			
 			return h
 		}catch(e){
-			
-			console.log('(' + req + ')')
+			//console.log(e)
+			//console.log('(' + req + ')')
 			var d = pathModule.dirname(req)
 			var b = pathModule.basename(req)
 			try{

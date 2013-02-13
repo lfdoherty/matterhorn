@@ -33,14 +33,17 @@ function getMimeType(type){
 }
 
 var http = require('http')
+var https = require('https')
 
 var quicklog = require('quicklog')
 
 var log = quicklog.make('matterhorn/main')
 
-//var apps = {};
-//var claimed = {};
-//var secureApps = {};
+var redirHeader = '<html><head><script>'+
+	'hostName = window.location.host;'+
+	'if(hostName.indexOf(":") !== -1) hostName = hostName.substr(0, hostName.indexOf(":"));'+
+	'window.location = "';
+var redirFooter = '";</script></head><body><noscript>Javascript is disabled.  Please enable Javascript to use this site.</noscript></body></html>';
 
 var claimedSecure = {};
 getApplication = function(moduleName){
@@ -63,65 +66,11 @@ function alog(appName, type, msg){
 }
 
 exports.load = function(config, cb){
-	//app = new Facade();
-	//secureApp = new Facade(true);
-	/*function doneCb(){
-		//TODO
-		log('finished setup of matterhorn\n')
-		prepare(config, function(local, after){
-			after()
-			log('finished preparing matterhorn\n')
-		})//TODO FIXME
-	}*/
 
 	prepare(config, function(local, after){
 		cb(local.getServer(), local.getSecureServer(), after)
 	})
-	//cb(app, secureApp, doneCb)
 }
-/*
-function Facade(secure){
-	this.secure = secure;
-	var local = this;
-	_.each(methods, function(m){
-		var key = m+'__s';
-		
-		local[key] = [];
-	});
-}
-
-_.each(methods, function(m){
-	var key = m+'__s';
-	Facade.prototype[m] = function(app){
-		if(app.name === undefined){
-			_.errout('first parameter of ' + m + '(...) call must be a module with "name" and "dir" properties.');
-		}
-		_.assertString(app.name);
-		var c = claimed;
-		var a = apps;
-		if(this.secure){
-			a = secureApps;
-			c = claimedSecure;
-		}
-		if(a[app.name] !== undefined && a[app.name] !== app){
-			if(app.requirements && app.requirements.length > 0){
-				var otherApp = a[app.name];
-				otherApp.requirements = otherApp.requirements || [];
-				_.each(app.requirements, function(req){
-					if(otherApp.requirements.indexOf(req) === -1){
-						otherApp.requirements.push(req);
-					}
-				});
-			}
-		}else{
-			a[app.name] = app;
-			//console.log('added app: ' + app.name);
-			c[app.name] = new Error().stack;
-		}
-		if(this[key] === undefined) _.errout('missing list(' + key + ')');
-		this[key].push(arguments);
-	}
-});*/
 
 exports.do304IfSafe = function(req, res){
 
@@ -190,10 +139,6 @@ function serveFile(req, res, type, content, gzippedContent, etag){
 	//}
 }
 		
-//app = new Facade();
-//secureApp = new Facade(true);
-
-//var config = {name: appName, host: hostName, env: envType, port: port, securePort: securePort}
 function prepare(config, cb){
 
 	_.assertLength(arguments, 2);
@@ -303,8 +248,49 @@ function prepare(config, cb){
 	}
 
 
-	log('\n\nLoading matterhorn app as main application: ' + colourize(appName, purple) + '\n');
+	log('\n\nLoading matterhorn app as main application: ' + appName + '\n');
 
+	var hosted = {};
+	var unhosted = {};
+	
+	var hostedContent = {};
+	var hostedZippedContent = {};
+	var types = {}
+	var etags = {}
+	
+	function hostFile(url, type, content, gzippedContent, etag){
+		_.assertLength(arguments, 5)
+		_.assertBuffer(content)
+		
+		delete unhosted[url];
+		hostedContent[url] = content;
+		hostedZippedContent[url] = gzippedContent;
+		types[url] = type
+		etags[url] = etag
+		//console.log('hosting(' + wrapper.isSecure + ') ' + url)
+		if(!hosted[url]){
+			hosted[url] = true;
+
+			/*wrapper.get(url, function(req, res){
+			
+				if(unhosted[url]){
+					res.send(410);
+				}else{
+					serveFile(req, res, type, hostedContent[url], hostedZippedContent[url], etag||'"#"');
+				}
+			});*/
+		}
+		return function(newContent, newGzippedContent){
+			_.assertBuffer(newContent)
+			hostedContent[url] = newContent
+			hostedZippedContent[url] = newGzippedContent
+		}
+	}
+	function unhostFile(url){
+		//console.log('unhosting ' + url)
+		unhosted[url] = true;
+	}
+	
 	function makeExpressWrapper(wrapper){
 
 
@@ -391,24 +377,47 @@ function prepare(config, cb){
 		var get = wrapper.get;
 		var post = wrapper.post;
 
+		var hostedForWrapperYet = {}
+		function hostForWrapper(url){
+			if(url.indexOf('?') !== -1) url = url.substr(0, url.indexOf('?'))
+			if(hostedForWrapperYet[url]) return
+			
+			hostedForWrapperYet[url] = true;
+			
+			//console.log('hosting url(' + wrapper.isSecure+'): ' + url)
+			//console.log(JSON.stringify(Object.keys(hostedContent)))
+			_.assertDefined(hostedContent[url])
+
+			wrapper.get(url, function(req, res){
+			
+				if(unhosted[url]){
+					res.send(410);
+				}else{
+					serveFile(req, res, types[url], hostedContent[url], hostedZippedContent[url], etags[url]||'"#"');
+				}
+			});
+		}
+		/*
 		var hosted = {};
 		var unhosted = {};
 		
 		var hostedContent = {};
 		var hostedZippedContent = {};
-
-		function hostFile(app, url, type, content, gzippedContent, etag){
-			_.assertLength(arguments, 6)
+		var etags = {}
+		
+		function hostFile(url, type, content, gzippedContent, etag){
+			_.assertLength(arguments, 5)
 			_.assertBuffer(content)
 			
 			delete unhosted[url];
 			hostedContent[url] = content;
 			hostedZippedContent[url] = gzippedContent;
-			//console.log('hosting ' + url)
+			etags[url] = etag
+			console.log('hosting(' + wrapper.isSecure + ') ' + url)
 			if(!hosted[url]){
 				hosted[url] = true;
 
-				wrapper.get(app, url, function(req, res){
+				wrapper.get(url, function(req, res){
 				
 					if(unhosted[url]){
 						res.send(410);
@@ -427,6 +436,19 @@ function prepare(config, cb){
 			//console.log('unhosting ' + url)
 			unhosted[url] = true;
 		}
+		*/
+		
+		var pageLookup = {}
+		
+		wrapper.extendPage = function(app, pageUrl, jsFilePath){
+			//_.errout('TODO')
+			var page = pageLookup[pageUrl]
+			if(!page){
+				_.errout('cannot locate page, may not be defined yet (or ever?): ' + pageUrl)
+			}
+			
+			page.extendPage(app, jsFilePath)
+		}
 
 		wrapper.page = function(app, pageDef){
 
@@ -436,6 +458,7 @@ function prepare(config, cb){
 			//if(_.isString(pageDef.js)) pageDef.js = [pageDef.js];
 			//if(_.isString(pageDef.css)) pageDef.css = [pageDef.css];
 			log('processing page: ' + pageDef.url)
+			//console.log(JSON.stringify(pageDef))
 			if(pageDef.js) _.assertString(pageDef.js)
 			if(pageDef.css) _.assertString(pageDef.css)
 		
@@ -447,13 +470,47 @@ function prepare(config, cb){
 			
 			var includeJs
 			var includeCss
-			//var includeFragments
+			
+			var extendIncludeFunctions = {}
+			function realIncludeJs(){
+				var arr = includeJs()
+				Object.keys(extendIncludeFunctions).forEach(function(key){
+					var f = extendIncludeFunctions[key]
+					arr = arr.concat(f())
+				})
+				return arr
+			}
+			realIncludeJs.includeFragments = function(){
+				return includeJs.includeFragments()
+			}
+			
+			pageLookup[pageDef.url] = pageDef
+			pageDef.extendPage = function(app, jsFilePath){
+				var loaded = false
+				jsFiles.load(app, jsFilePath, hostFile, unhostFile, log, function(err, includeJsFunc){
+					if(err) _.errout(err);
+					loaded = true
+					
+					setTimeout(function(){includeJsFunc().forEach(hostForWrapper)},1000)
+					setTimeout(function(){includeJsFunc.includeFragments().forEach(function(obj){hostForWrapper(obj.url)})},1000)
+					
+					//_.assert(!loaded)//TODO can this ever happen?
+					_.assertFunction(includeJsFunc)
+					extendIncludeFunctions[jsFilePath] = includeJsFunc
+				});
+			}
 			
 			try{
 			
-				jsFiles.load(app, pageDef.js, hostFile.bind(undefined,app), unhostFile, log, function(err, includeJsFunc){
+				//console.log('loading files: ' + wrapper.isSecure + ' ' + pageDef.url)
+				jsFiles.load(app, pageDef.js, hostFile, unhostFile, log, function(err, includeJsFunc){
 					if(err) _.errout(err);
 					_.assertFunction(includeJsFunc)
+					//console.log('got include: ' + wrapper.isSecure + ' ' + pageDef.url)
+					
+					setTimeout(function(){includeJsFunc().forEach(hostForWrapper)},1000)
+					setTimeout(function(){includeJsFunc.includeFragments().forEach(function(obj){hostForWrapper(obj.url)})},1000)
+					
 					includeJs = includeJsFunc
 				});
 				
@@ -464,8 +521,11 @@ function prepare(config, cb){
 				}, 1000)
 				
 				if(pageDef.css){
-					cssFiles.load(app, pageDef.css, hostFile.bind(undefined,app), unhostFile, imageryImportFunction, log, function(err, includeCssFunc){
+					cssFiles.load(app, pageDef.css, hostFile, unhostFile, imageryImportFunction, log, function(err, includeCssFunc){
 						if(err) throw err
+						
+						setTimeout(function(){includeCssFunc().forEach(hostForWrapper)},1000)
+						
 						includeCss = includeCssFunc
 					});
 				}else{
@@ -493,7 +553,7 @@ function prepare(config, cb){
 			if(pageDef.icon){//TODO fix directory resolution to be relative to module dir
 				var iconUrl = '/icon/'+pathModule.basename(pageDef.icon)
 				var iconBuffer = fs.readFileSync(pageDef.icon)
-				wrapper.get(app, iconUrl, function(req, res){
+				wrapper.get(iconUrl, function(req, res){
 					res.setHeader('Content-Type', 'image/png')
 					res.setHeader('Content-Length', iconBuffer.length)
 					res.end(iconBuffer)
@@ -548,7 +608,7 @@ function prepare(config, cb){
 					var title =  b.title || pageDef.title || app.name || ''
 					//console.log('TITLE OPTIONS: ' + b.title + ' ' + pageDef.title + ' ' + app.name);
 					
-					var parts = makeWrappingParts(app, local, pageDef, title, includeJs, includeCss, iconUrl);
+					var parts = makeWrappingParts(app, local, pageDef, title, realIncludeJs, includeCss, iconUrl);
 		
 					var html = parts.headerStart + variableScript + parts.javascript + extraJs + parts.headerEnd + /*parts.javascript + extraJs + */parts.footer;
 
@@ -558,7 +618,7 @@ function prepare(config, cb){
 				}
 			}
 
-			var args = [app, pageDef.url].concat(pageDef.filters || []).concat(handler);
+			var args = [pageDef.url].concat(pageDef.filters || []).concat(handler);
 			if(pageDef.method && pageDef.method.toLowerCase() === 'post'){
 				wrapper.post.apply(undefined, args);
 			}else{
@@ -587,7 +647,7 @@ function prepare(config, cb){
 
 				var urlPattern = urlPrefix + files.computeHash(paramStr + serverStateId);
 				
-				wrapper.get(app, urlPattern, function(req, res){
+				wrapper.get(urlPattern, function(req, res){
 					res.header('Cache-Control', 'public max-age=2592000')
 					res.header('Expires', 'Sat, 28 Apr 2100 10:00:00 GMT')
 					res.head('Content-Type', mimeType)
@@ -609,22 +669,18 @@ function prepare(config, cb){
 			alog(appName, 'imagery', config.port + ' ' + (wrapper.isSecure ? 'https ' : 'http ') + app.name + ' imagery ' + genName);
 		}
 
-		var redirHeader = '<html><head><script>'+
-			'hostName = window.location.host;'+
-			'if(hostName.indexOf(":") !== -1) hostName = hostName.substr(0, hostName.indexOf(":"));'+
-			'window.location = "';
-		var redirFooter = '";</script></head><body><noscript>Javascript is disabled.  Please enable Javascript to use this site.</noscript></body></html>';
 		
 		function javascriptRedirect(res, url){
 			res.send(redirHeader + config.prefix + url + redirFooter);
 		}
 		
-		wrapper.get = function(app, path){
+		wrapper.get = function(path){
+			_.assertString(path)
 	
 			path = wrapper.getSilent.apply(undefined, arguments);
 			//console.log(config.port + ' ' + (wrapper.isSecure ? 'https ' : 'http ') + colourize(app.name, cyan) + ' get ' + colourize(path, green));
 			
-			alog(appName,'get', config.port + ' ' + (wrapper.isSecure ? 'https' : 'http') + ' get ' + path);
+			alog(appName,'get',  (wrapper.isSecure ? config.securePort : config.port) + ' ' + (wrapper.isSecure ? 'https' : 'http') + ' get ' + path);
 		}
 		
 		function makeRequestCbWrapper(path, type, cb){
@@ -649,10 +705,12 @@ function prepare(config, cb){
 			}
 		}
 		
-		wrapper.getSilent = function(app, path){
+		wrapper.getSilent = function(path){
 		
+			//_.assertLength(arguments, 1)
+			_.assertString(path)
 	
-			var args = Array.prototype.slice.call(arguments,1);
+			var args = Array.prototype.slice.call(arguments,0);
 			args[0] = path = config.prefix + path;
 			var cb = args[args.length-1];
 			args[args.length-1] = makeRequestCbWrapper(path, 'GET', cb);
@@ -661,9 +719,11 @@ function prepare(config, cb){
 			return args[0];
 		}
 	
-		wrapper.post = function(app, path){
+		wrapper.post = function(path){
+			_.assertString(path)
+			//_.assertLength(arguments, 1)
 
-			var args = Array.prototype.slice.call(arguments,1);
+			var args = Array.prototype.slice.call(arguments,0);
 			args[0] = path = config.prefix + path;
 
 			var cb = args[args.length-1];
@@ -672,7 +732,7 @@ function prepare(config, cb){
 			post.apply(wrapper, args);
 			//console.log(config.port + ' ' + (wrapper.isSecure ? 'https ' : 'http ') + colourize(app.name, cyan) + ' post ' + colourize(path, green));
 			//alog(appName, 'post', config.port + ' ' + (wrapper.isSecure ? 'https ' : 'http ') + colourize(app.name, cyan) + ' post ' + colourize(path, green));
-			alog(appName, 'post', config.port + ' ' + (wrapper.isSecure ? 'https' : 'http') + ' post ' + path);
+			alog(appName, 'post', (wrapper.isSecure ? config.securePort : config.port) + ' ' + (wrapper.isSecure ? 'https' : 'http') + ' post ' + path);
 		}
 		
 		
@@ -683,9 +743,12 @@ function prepare(config, cb){
 			if(path.indexOf('.js') === path.length-3){
 				path = path.substr(0, path.length-3)
 			}
-			jsFiles.load(app, path, hostFile.bind(undefined, app), unhostFile, log, function(err){
+			jsFiles.load(app, path, hostFile, unhostFile, log, function(err){
 				if(err) throw err//_.errout('cannot find file to be served as "' + name + '" at path: ' + path);
 				//TODO
+				
+				//setTimeout(function(){includeCssFunc().forEach(hostForWrapper)},1000)
+				hostForWrapper(path)
 			});				
 			
 
@@ -713,7 +776,7 @@ function prepare(config, cb){
 				if(hashStr !== hash){
 
 					url = urlPrefix+hashStr+'/'+name+'.js';
-					hostFile(app, url, 'js', jsBuf, gzipped, '');
+					hostFile(url, 'js', jsBuf, gzipped, '');
 					//var jsBuf = new Buffer(jsStr)
 				
 					zlib.gzip(jsBuf, function(err, data){
@@ -723,7 +786,8 @@ function prepare(config, cb){
 					
 						hash = hashStr;
 
-						hostFile(app, url, 'js', jsBuf, gzipped, '');
+						hostFile(url, 'js', jsBuf, gzipped, '');
+						hostForWrapper(url)
 					});
 				}
 				
@@ -732,8 +796,8 @@ function prepare(config, cb){
 			});
 		}
 	
-		wrapper.serveJson = function(app, name, cb){
-			//_.assertString(app.name)
+		wrapper.serveJson = function(name, cb){
+			_.assertString(name)
 			var urlPrefix = '/json/'// + app.name +'/';
 			var url;
 			var hash;
@@ -750,7 +814,7 @@ function prepare(config, cb){
 				if(hashStr !== hash){
 
 					url = urlPrefix+hashStr+'/'+name+'.json';
-					hostFile(app, url, 'json', jsonBuf, gzipped, '');
+					hostFile(url, 'json', jsonBuf, gzipped, '');
 				
 					zlib.gzip(jsonBuf, function(err, data){
 						if(err) _.errout(err);
@@ -759,7 +823,8 @@ function prepare(config, cb){
 					
 						hash = hashStr;
 
-						hostFile(app, url, 'json', jsonBuf, gzipped, '');
+						hostFile(url, 'json', jsonBuf, gzipped, '');
+						hostForWrapper(url)
 					});
 				}
 				
@@ -780,7 +845,7 @@ function prepare(config, cb){
 		certificate = fs.readFileSync(process.cwd() + '/certificate.pem').toString();
 		gotHttpsStuff = true;
 	}catch(e){
-		log("WARNING: Https access disabled, since one or both of privatekey.pem and certificate.pem were not found or could not be read");
+		console.log("WARNING: Https access disabled, since one or both of privatekey.pem and certificate.pem were not found or could not be read");
 	}	
 	
 	var localApp = express()//.createServer()
@@ -797,8 +862,10 @@ function prepare(config, cb){
 	localApp.set('securehost', 'https://' + hostName);
 
 	if(envType === 'development'){
-		localApp.post(exports, '/serverchanged', serverChangedCb);
+		localApp.post('/serverchanged', serverChangedCb);
 	}
+
+	localApp.use(express.errorHandler({ dumpExceptions: true, showStack: true }));
 
 	function serverChangedCb(req, res){
 
@@ -817,38 +884,27 @@ function prepare(config, cb){
 		}
 		tryFunc();
 	}
-	
+
 	if(gotHttpsStuff){
-		/*
-		var localSecureApp = express.createServer({key: privateKey, cert: certificate},
-			express.bodyParser()
-		  , express.cookieParser());
-		 */
-		var localSecureApp = express({key: privateKey, cert: certificate})
+
+		var localSecureApp = express()
 		localSecureApp.use(express.bodyParser())
 		localSecureApp.use(express.cookieParser());
 		  
 		localApp.settings.securePort = config.securePort;
 
-		//localApp.configure(function(){
-			localApp.use(express.errorHandler({ dumpExceptions: true, showStack: true }));
-		//});
 		localSecureApp.settings.env = envType;
 
-		//localSecureApp.configure(function(){
-			localSecureApp.use(express.errorHandler({ dumpExceptions: true, showStack: true }));
-		//});
+		localSecureApp.use(express.errorHandler({ dumpExceptions: true, showStack: true }));
 
 		makeExpressWrapper(localSecureApp);
-
-
 
 		localSecureApp.isSecure = true;
 		localSecureApp.set('host', 'http://' + hostName);
 		localSecureApp.set('securehost', 'https://' + hostName);
 
 		if(envType === 'development'){
-			localSecureApp.post(exports, '/serverchanged', serverChangedCb);
+			localSecureApp.post('/serverchanged', serverChangedCb);
 		}
 	}
 	
@@ -882,8 +938,15 @@ function prepare(config, cb){
 	};
 
 	if(gotHttpsStuff){	
-		local.getSecureServer = function(){
+		/*local.getSecureServer = function(){
 			return localSecureApp;
+		}*/
+		if(config.localOnly){
+			var secureS = https.createServer({key: privateKey, cert: certificate}, localSecureApp)
+			localApp.getSecureServer = function(){return secureS;}
+		}else{
+			var secureS = https.createServer({key: privateKey, cert: certificate}, localSecureApp)
+			localApp.getSecureServer = function(){return secureS;}
 		}
 	}	
 
@@ -902,7 +965,7 @@ function prepare(config, cb){
 		}
 		if(localSecureApp){
 			localSecureApp.javascriptRedirectToInsecure = function(res, url){
-				res.send(redirHeader + 'http://" + window.location.host + ":' + config.port + url + redirFooter);
+				res.send(redirHeader + 'http://" + hostName + ":' + config.port + url + redirFooter);
 			}
 			localSecureApp.getPort = function(){
 				return config.port;
@@ -929,17 +992,24 @@ function prepare(config, cb){
 		if(config.localOnly){
 			//localApp.listen(config.port, '127.0.0.1', cdl);
 			s.listen(config.port, '127.0.0.1', cdl);
+			//http.createServer(s).listen(80);
 		}else{
 			//localApp.listen(config.port, cdl);
+			console.log('http listening on ' + config.port)
 			s.listen(config.port, cdl);
 		}
 		var httpsPart = '';
 		
 		if(gotHttpsStuff && config.securePort !== 'none'){
 			if(config.localOnly){
-				localSecureApp.listen(config.securePort, '127.0.0.1');
+				//localSecureApp.listen(config.securePort, '127.0.0.1');
+				secureS.listen(config.securePort, '127.0.0.1', cdl);
 			}else{
-				localSecureApp.listen(config.securePort);
+				secureS.listen(config.securePort, function(){
+					console.log('https listening on ' + config.securePort)
+					cdl()
+				});
+				//localSecureApp.listen(config.securePort);
 			}
 			httpsPart = ' (and ' + config.securePort + '.)';
 		}
