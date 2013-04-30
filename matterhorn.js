@@ -386,13 +386,13 @@ function prepare(config, cb){
 			
 			//console.log('hosting url(' + wrapper.isSecure+'): ' + url)
 			//console.log(JSON.stringify(Object.keys(hostedContent)))
-			_.assertDefined(hostedContent[url])
 
 			wrapper.get(url, function(req, res){
 			
 				if(unhosted[url]){
 					res.send(410);
 				}else{
+					_.assertDefined(hostedContent[url])
 					serveFile(req, res, types[url], hostedContent[url], hostedZippedContent[url], etags[url]||'"#"');
 				}
 			});

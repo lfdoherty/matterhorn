@@ -222,13 +222,15 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log
 					
 					cb(undefined, result)
 				})
+
+				setTimeout(function(){
+					computeHeader(hostFile, unhostFile, path, name)
+				}, 500)
+
 			}, function(){
 				log('failed to finish loading: ' + path)
 			})
 
-			setTimeout(function(){
-				computeHeader(hostFile, unhostFile, path, name)
-			}, 500)
 		
 			fragments.load(app, fragmentRequirements, hostFile, unhostFile, log, function(err, f){
 				if(err) throw err
