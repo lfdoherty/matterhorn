@@ -267,7 +267,7 @@ function prepare(config, cb){
 		hostedZippedContent[url] = gzippedContent;
 		types[url] = type
 		etags[url] = etag
-		//console.log('hosting(' + wrapper.isSecure + ') ' + url)
+		//console.log('hosting: ' + url)
 		if(!hosted[url]){
 			hosted[url] = true;
 

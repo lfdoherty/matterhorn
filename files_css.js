@@ -100,7 +100,7 @@ var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, im
 	var lastModTime;
 	function watcher(curr, prev) {
 		if(curr.mtime > prev.mtime){
-			log('updating file: ' + path);
+			console.log('updating file: ' + path);
 			//console.log('updating file: ' + path);
 
 			lastModTime = curr.mtime
@@ -136,24 +136,34 @@ var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, im
 					zlib.gzip(changedSource, function(err, data){
 						if(err) throw err;
 				
+						var headerUrl = '/static/h/'+name + '?h='+hash
+						var hostUrl = '/static/h/'+name// + '?h='+hash
+						
 						result = {
 							unzipped: changedSource,
 							zipped: data,
-							url: '/static/'+hash+'/'+name,
+							url: headerUrl,//'/static/'+hash+'/'+name,
 							included: includedUrls
 						}
 					
 						log('loaded ' + path + ' -> ' + result.url)
+						
+						var hoster = oldWrappedCss[path]
+						if(hoster){
+							hoster(new Buffer(changedSource), data)
+						}else{
 
-						if(oldWrappedCss[path]){
-							unhostFile(oldWrappedCss[path].url);
+							/*if(oldWrappedCss[path]){
+								unhostFile(oldWrappedCss[path].url);
+							}*/
+							hoster = oldWrappedCss[path] = hostFile(hostUrl, 'css', new Buffer(changedSource), data, '')
 						}
-						hostFile(result.url, 'css', new Buffer(changedSource), data, '')
 
 						includedUrls[result.url] = true
+						//console.log('set urlsForCss: ' + path + ' ' + JSON.stringify(includedUrls))
 						urlsForCss[path] = Object.keys(includedUrls)
 
-						oldWrappedCss[path] = result
+						//oldWrappedCss[path] = result
 					
 						cb(undefined, result)
 					})
