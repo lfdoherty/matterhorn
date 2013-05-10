@@ -305,6 +305,11 @@ function prepare(config, cb){
 			includeCss().forEach(function(url){
 				header += '<link type="text/css" rel="stylesheet" href="' + config.prefix + url + '"></link>';
 			});
+			if(pageDef.externalCss){
+				pageDef.externalCss.forEach(function(url){
+					header += '<link type="text/css" rel="stylesheet" href="' + url + '"></link>';
+				});
+			}
 			//console.log('including fragments')
 			includeJs.includeFragments().forEach(function(e){
 				
