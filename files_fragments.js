@@ -14,8 +14,8 @@ var urlFor = {}
 var nameFor = {}
 var hashFor = {}
 
-exports.load = function(app, names, hostFile, unhostFile, logger, cb){
-	_.assertLength(arguments, 6)
+exports.load = function(app, names, hostFile, unhostFile, logger, dirPath, cb){
+	_.assertLength(arguments, 7)
 
 	var funcs = []
 	var cdl = _.latch(names.length, function(){
@@ -31,7 +31,10 @@ exports.load = function(app, names, hostFile, unhostFile, logger, cb){
 	})
 	
 	names.forEach(function(name){
-		var resolvedName = reqs.resolve(app, name, 'fragment', logger)
+		var dp = dirPath
+		dp = dp.substr(0,dp.lastIndexOf('/'))
+		dp = dp.substr(0,dp.lastIndexOf('/'))
+		var resolvedName = reqs.resolve(app, name, 'fragment', logger, dp, 'fragment')//'fragment', 'fragment')
 	
 		loadAndWrap(resolvedName.name, resolvedName.module, hostFile, unhostFile, logger, function(err){
 			if(err){ cb(err); return}

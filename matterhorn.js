@@ -523,7 +523,7 @@ function prepare(config, cb){
 					if(includeJs === undefined){
 						_.errout('js files never finished loading: ' + pageDef.js)
 					}
-				}, 1000)
+				}, 5000)
 				
 				if(pageDef.css){
 					cssFiles.load(app, pageDef.css, hostFile, unhostFile, imageryImportFunction, log, function(err, includeCssFunc){

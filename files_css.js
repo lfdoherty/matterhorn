@@ -172,7 +172,7 @@ var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, im
 		
 			requirements.forEach(function(req){
 
-				var r = reqs.resolve(app, req, 'css', log)
+				var r = reqs.resolve(app, req, 'css', log, pathModule.dirname(path), path)
 
 				loadAndWrapCss(r.name, r.module,  hostFile, unhostFile, imageryFunction, log, function(rm, km){
 					Object.keys(km.included).forEach(function(url){includedUrls[url] = true;})

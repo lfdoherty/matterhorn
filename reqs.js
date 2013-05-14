@@ -189,7 +189,7 @@ function resolveRequire(currentModule, req, special, log, currentPath, currentNa
 				}
 			}catch(e){
 				console.log(e)
-				throw new Error('cannot resolve exact require: ' + JSON.stringify([currentPath, req]) + ' -> ' + realPath + ' or ' + otherRealPath)
+				throw new Error('cannot resolve exact require in ' + currentName + ' : ' + JSON.stringify([currentPath, req]) + ' -> ' + realPath + ' or ' + otherRealPath)
 			}
 		}
 		return realPath

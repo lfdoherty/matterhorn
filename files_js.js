@@ -24,7 +24,7 @@ exports.load = function(app, jsName, hostFile, unhostFile, logger, cb){
 	_.assertLength(arguments, 6)
 
 	//console.log('beginning loading: ' + jsName)
-	var resolvedName = reqs.resolve(app, jsName, 'js', logger)
+	var resolvedName = reqs.resolve(app, jsName, 'js', logger)//, 'js', 'js')
 	//console.log('loading: ' + resolvedName.name)
 	loadAndWrapJs(resolvedName.name, resolvedName.module, hostFile, unhostFile, logger, function(err, res){
 		//console.log('here: ' + resolvedName.name)
@@ -232,7 +232,7 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log
 			})
 
 		
-			fragments.load(app, fragmentRequirements, hostFile, unhostFile, log, function(err, f){
+			fragments.load(app, fragmentRequirements, hostFile, unhostFile, log, pathModule.dirname(path), function(err, f){
 				if(err) throw err
 				fragmentGetters[path] = f
 				var res = f()
