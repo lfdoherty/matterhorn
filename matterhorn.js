@@ -890,7 +890,7 @@ function prepare(config, cb){
 		tryFunc();
 	}
 
-	if(gotHttpsStuff){
+	if(gotHttpsStuff || config.makeSecureServerHttp){
 
 		var localSecureApp = express()
 		localSecureApp.use(express.bodyParser())
