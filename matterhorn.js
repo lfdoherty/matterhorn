@@ -853,6 +853,8 @@ function prepare(config, cb){
 		console.log("WARNING: Https access disabled, since one or both of privatekey.pem and certificate.pem were not found or could not be read");
 	}	
 	
+	gotHttpsStuff = gotHttpsStuff || config.makeSecureServerHttp
+	
 	var localApp = express()//.createServer()
 	localApp.use(express.bodyParser())
 	localApp.use(express.cookieParser())
@@ -890,7 +892,7 @@ function prepare(config, cb){
 		tryFunc();
 	}
 
-	if(gotHttpsStuff || config.makeSecureServerHttp){
+	if(gotHttpsStuff){
 
 		var localSecureApp = express()
 		localSecureApp.use(express.bodyParser())
@@ -942,7 +944,7 @@ function prepare(config, cb){
 		}
 	};
 
-	if(gotHttpsStuff || config.makeSecureServerHttp){	
+	if(gotHttpsStuff){	
 		/*local.getSecureServer = function(){
 			return localSecureApp;
 		}*/
