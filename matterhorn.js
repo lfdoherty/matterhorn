@@ -942,7 +942,7 @@ function prepare(config, cb){
 		}
 	};
 
-	if(gotHttpsStuff){	
+	if(gotHttpsStuff || config.makeSecureServerHttp){	
 		/*local.getSecureServer = function(){
 			return localSecureApp;
 		}*/
