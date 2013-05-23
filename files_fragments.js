@@ -32,8 +32,8 @@ exports.load = function(app, names, hostFile, unhostFile, logger, dirPath, cb){
 	
 	names.forEach(function(name){
 		var dp = dirPath
-		dp = dp.substr(0,dp.lastIndexOf('/'))
-		dp = dp.substr(0,dp.lastIndexOf('/'))
+		//dp = dp.substr(0,dp.lastIndexOf('/'))
+		//dp = dp.substr(0,dp.lastIndexOf('/'))
 		var resolvedName = reqs.resolve(app, name, 'fragment', logger, dp, 'fragment')//'fragment', 'fragment')
 	
 		loadAndWrap(resolvedName.name, resolvedName.module, hostFile, unhostFile, logger, function(err){

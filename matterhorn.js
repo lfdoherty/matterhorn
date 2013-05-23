@@ -946,12 +946,17 @@ function prepare(config, cb){
 		/*local.getSecureServer = function(){
 			return localSecureApp;
 		}*/
-		if(config.localOnly){
-			var secureS = https.createServer({key: privateKey, cert: certificate}, localSecureApp)
-			localApp.getSecureServer = function(){return secureS;}
+		if(!config.makeSecureServerHttp){
+			/*if(config.localOnly){
+				var secureS = https.createServer({key: privateKey, cert: certificate}, localSecureApp)
+				localApp.getSecureServer = function(){return secureS;}
+			}else{*/
+				var secureS = https.createServer({key: privateKey, cert: certificate}, localSecureApp)
+				localApp.getSecureServer = function(){return secureS;}
+			//}
 		}else{
-			var secureS = https.createServer({key: privateKey, cert: certificate}, localSecureApp)
-			localApp.getSecureServer = function(){return secureS;}
+				var secureS = http.createServer(localSecureApp)
+				localApp.getSecureServer = function(){return secureS;}
 		}
 	}	
 
