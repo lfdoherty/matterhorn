@@ -897,6 +897,10 @@ function prepare(config, cb){
 		var localSecureApp = express()
 		localSecureApp.use(express.bodyParser())
 		localSecureApp.use(express.cookieParser());
+		
+		if(config.makeSecureServerHttp){
+			localSecureApp.enable('trust proxy')
+		}
 		  
 		localApp.settings.securePort = config.securePort;
 
@@ -941,7 +945,8 @@ function prepare(config, cb){
 		},
 		getSecurePort: function(){
 			return config.securePort;
-		}
+		}//,
+		//app: localApp
 	};
 
 	if(gotHttpsStuff){	
