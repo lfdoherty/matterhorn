@@ -325,11 +325,13 @@ function prepare(config, cb){
 		
 			var middle = '';
 			
-			var toInclude = includeJs()
-			//console.log(JSON.stringify(toInclude, null, 2))
-			toInclude.forEach(function(url){
-				middle += '<script type="text/javascript" src="' + config.prefix + url + '"></script>';
-			});
+			if(includeJs){
+				var toInclude = includeJs()
+				//console.log(JSON.stringify(toInclude, null, 2))
+				toInclude.forEach(function(url){
+					middle += '<script type="text/javascript" src="' + config.prefix + url + '"></script>';
+				});
+			}
 
 			var footer = '</body></html>';
 			
@@ -478,6 +480,8 @@ function prepare(config, cb){
 			
 			var extendIncludeFunctions = {}
 			function realIncludeJs(){
+				if(!includeJs) return []
+				
 				var arr = includeJs()
 				Object.keys(extendIncludeFunctions).forEach(function(key){
 					var f = extendIncludeFunctions[key]
@@ -486,7 +490,11 @@ function prepare(config, cb){
 				return arr
 			}
 			realIncludeJs.includeFragments = function(){
-				return includeJs.includeFragments()
+				if(includeJs){
+					return includeJs.includeFragments()
+				}else{
+					return []
+				}
 			}
 			
 			pageLookup[pageDef.url] = pageDef
@@ -508,22 +516,26 @@ function prepare(config, cb){
 			try{
 			
 				//console.log('loading files: ' + wrapper.isSecure + ' ' + pageDef.url)
-				jsFiles.load(app, pageDef.js, hostFile, unhostFile, log, function(err, includeJsFunc){
-					if(err) _.errout(err);
-					_.assertFunction(includeJsFunc)
-					//console.log('got include: ' + wrapper.isSecure + ' ' + pageDef.url)
+				if(pageDef.js){
+					jsFiles.load(app, pageDef.js, hostFile, unhostFile, log, function(err, includeJsFunc){
+						if(err) _.errout(err);
+						_.assertFunction(includeJsFunc)
+						//console.log('got include: ' + wrapper.isSecure + ' ' + pageDef.url)
 					
-					setTimeout(function(){includeJsFunc().forEach(hostForWrapper)},1000)
-					setTimeout(function(){includeJsFunc.includeFragments().forEach(function(obj){hostForWrapper(obj.url)})},1000)
+						setTimeout(function(){includeJsFunc().forEach(hostForWrapper)},1000)
+						setTimeout(function(){includeJsFunc.includeFragments().forEach(function(obj){hostForWrapper(obj.url)})},1000)
 					
-					includeJs = includeJsFunc
-				});
+						includeJs = includeJsFunc
+					});
+
+					setTimeout(function(){
+						if(includeJs === undefined){
+							_.errout('js files never finished loading: ' + pageDef.js)
+						}
+					}, 5000)
+
+				}
 				
-				setTimeout(function(){
-					if(includeJs === undefined){
-						_.errout('js files never finished loading: ' + pageDef.js)
-					}
-				}, 5000)
 				
 				if(pageDef.css){
 					cssFiles.load(app, pageDef.css, hostFile, unhostFile, imageryImportFunction, log, function(err, includeCssFunc){
