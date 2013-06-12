@@ -868,7 +868,12 @@ function prepare(config, cb){
 	gotHttpsStuff = gotHttpsStuff || config.makeSecureServerHttp
 	
 	var localApp = express()//.createServer()
-	localApp.use(express.bodyParser())
+	//localApp.use(express.bodyParser())
+	var bodyParserConfig = {
+		uploadDir: './files',
+		keepExtensions: true
+	}
+	localApp.use(express.bodyParser(bodyParserConfig))
 	localApp.use(express.cookieParser())
 	
 	localApp.settings.env = envType;
@@ -907,7 +912,7 @@ function prepare(config, cb){
 	if(gotHttpsStuff){
 
 		var localSecureApp = express()
-		localSecureApp.use(express.bodyParser())
+		localSecureApp.use(express.bodyParser(bodyParserConfig))
 		localSecureApp.use(express.cookieParser());
 		
 		if(config.makeSecureServerHttp){
