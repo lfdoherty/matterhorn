@@ -522,8 +522,8 @@ function prepare(config, cb){
 						_.assertFunction(includeJsFunc)
 						//console.log('got include: ' + wrapper.isSecure + ' ' + pageDef.url)
 					
-						setTimeout(function(){includeJsFunc().forEach(hostForWrapper)},1000)
-						setTimeout(function(){includeJsFunc.includeFragments().forEach(function(obj){hostForWrapper(obj.url)})},1000)
+						setTimeout(function(){includeJsFunc().forEach(hostForWrapper)},3000)
+						setTimeout(function(){includeJsFunc.includeFragments().forEach(function(obj){hostForWrapper(obj.url)})},3000)
 					
 						includeJs = includeJsFunc
 					});
