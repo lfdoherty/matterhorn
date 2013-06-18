@@ -504,8 +504,8 @@ function prepare(config, cb){
 					if(err) _.errout(err);
 					loaded = true
 					
-					setTimeout(function(){includeJsFunc().forEach(hostForWrapper)},1000)
-					setTimeout(function(){includeJsFunc.includeFragments().forEach(function(obj){hostForWrapper(obj.url)})},1000)
+					setTimeout(function(){includeJsFunc().forEach(hostForWrapper)},3000)
+					setTimeout(function(){includeJsFunc.includeFragments().forEach(function(obj){hostForWrapper(obj.url)})},3000)
 					
 					//_.assert(!loaded)//TODO can this ever happen?
 					_.assertFunction(includeJsFunc)
