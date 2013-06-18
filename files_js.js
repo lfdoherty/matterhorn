@@ -224,7 +224,7 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log
 
 					setTimeout(function(){
 						computeHeader(hostFile, unhostFile, path, name)
-					}, 500)
+					},2000)
 
 				})
 			}, function(){
