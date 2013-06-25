@@ -33,15 +33,20 @@ exports.load = function(app, jsName, hostFile, unhostFile, logger, cb){
 			var urlLists = urlsForJs[resolvedName.name];
 			
 			var all = getAll(urlsForJs[resolvedName.name])
-			var real = [headerUrls[resolvedName.name].url+headerHashes[resolvedName.name]]
-			for(var i=0;i<all.length;++i){
-				var a = all[i]
-				var full = a.url+pathHashSuffix[a.path]
-				if(real.indexOf(full) === -1){
-					real.push(full)
+			var hl = headerUrls[resolvedName.name]
+			if(!hl){
+				return []
+			}else{
+				var real = [hl.url+headerHashes[resolvedName.name]]
+				for(var i=0;i<all.length;++i){
+					var a = all[i]
+					var full = a.url+pathHashSuffix[a.path]
+					if(real.indexOf(full) === -1){
+						real.push(full)
+					}
 				}
+				return real
 			}
-			return real
 		}
 		
 		includeFunction.includeFragments = function(){
