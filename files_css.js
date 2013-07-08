@@ -1,4 +1,4 @@
-var zlib = require('zlib')
+//var zlib = require('zlib')
 var pathModule = require('path')
 var fs = require('fs')
 var crypto = require('crypto')
@@ -133,15 +133,16 @@ var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, im
 					var hash = u.hashStr(changedSource)
 					var symbol = hash + '_' + name.substr(0, name.length-3)
 					
-					zlib.gzip(changedSource, function(err, data){
-						if(err) throw err;
+					/*zlib.gzip(changedSource, function(err, data){
+						if(err) throw err;*/
+					setImmediate(function(){//TODO remove
 				
 						var headerUrl = '/static/h/'+name + '?h='+hash
 						var hostUrl = '/static/h/'+name// + '?h='+hash
 						
 						result = {
 							unzipped: changedSource,
-							zipped: data,
+							//zipped: data,
 							url: headerUrl,//'/static/'+hash+'/'+name,
 							included: includedUrls
 						}
@@ -150,13 +151,13 @@ var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, im
 						
 						var hoster = oldWrappedCss[path]
 						if(hoster){
-							hoster(new Buffer(changedSource), data)
+							hoster(new Buffer(changedSource), undefined)//data)
 						}else{
 
 							/*if(oldWrappedCss[path]){
 								unhostFile(oldWrappedCss[path].url);
 							}*/
-							hoster = oldWrappedCss[path] = hostFile(hostUrl, 'css', new Buffer(changedSource), data, '')
+							hoster = oldWrappedCss[path] = hostFile(hostUrl, 'css', new Buffer(changedSource), /*data*/undefined, '')
 						}
 
 						includedUrls[result.url] = true

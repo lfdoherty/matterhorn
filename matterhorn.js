@@ -1023,23 +1023,37 @@ function prepare(config, cb){
 			if(readyCb) readyCb();
 		});
 		
+		//var evilCache = true
+		
+		var realPort = config.port
+		var realSecurePort = config.securePort
+		/*
+		if(evilCache){
+			realPort = 9483
+			require('evil-http-cache').createServer(realPort, 'localhost', config.port)
+			if(gotHttpsStuff && config.securePort !== 'none'){
+				realSecurePort = 9484
+				require('evil-http-cache').createServer(realSecurePort, 'localhost', config.securePort)
+			}
+		}*/
+		
 		if(config.localOnly){
 			//localApp.listen(config.port, '127.0.0.1', cdl);
-			s.listen(config.port, '127.0.0.1', cdl);
+			s.listen(realPort, '127.0.0.1', cdl);
 			//http.createServer(s).listen(80);
 		}else{
 			//localApp.listen(config.port, cdl);
 			console.log('http listening on ' + config.port)
-			s.listen(config.port, cdl);
+			s.listen(realPort, cdl);
 		}
 		var httpsPart = '';
 		
 		if(gotHttpsStuff && config.securePort !== 'none'){
 			if(config.localOnly){
 				//localSecureApp.listen(config.securePort, '127.0.0.1');
-				secureS.listen(config.securePort, '127.0.0.1', cdl);
+				secureS.listen(realSecurePort, '127.0.0.1', cdl);
 			}else{
-				secureS.listen(config.securePort, function(){
+				secureS.listen(realSecurePort, function(){
 					console.log('https listening on ' + config.securePort)
 					cdl()
 				});

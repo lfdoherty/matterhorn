@@ -1,6 +1,6 @@
 "use strict";
 
-var zlib = require('zlib')
+//var zlib = require('zlib')
 var pathModule = require('path')
 var fs = require('fs')
 
@@ -118,11 +118,12 @@ function computeHeader(hostFile, unhostFile, path, name){
 	var headerUrl = '/static/h/'+name.substr(0, name.length-3)+'_header.js?h='+hash
 	var hostUrl = '/static/h/'+name.substr(0, name.length-3)+'_header.js'
 	headerHashes[path] = '?h='+hash
-	zlib.gzip(headerSource, function(err, zippedHeader){
+	/*zlib.gzip(headerSource, function(err, zippedHeader){
 		if(err) throw err;
 		hostFile(hostUrl, 'js', new Buffer(headerSource), zippedHeader, '')
-	})
+	})*/
 	headerUrls[path] = {url: hostUrl, path: path}//headerUrl
+	hostFile(hostUrl, 'js', new Buffer(headerSource), undefined, '')
 }
 			
 function getSymbol(path){
@@ -210,19 +211,20 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log
 				wrappedSource = new Buffer(wrappedSource)
 				
 				//console.log('zipping ' + symbol)
-				zlib.gzip(wrappedSource, function(err, data){
+				/*zlib.gzip(wrappedSource, function(err, data){
 					if(err) throw err;
 
 					//console.log('...done zipping ' + symbol)
-					result.zipped = data
+					result.zipped = data*/
+				setImmediate(function(){//TODO remove
 
 					var hoster = oldWrappedJs[path]
 						
 					if(hoster){
 						//console.log('refreshed hosted content for ' + result.hostUrl)
-						hoster(wrappedSource, data)
+						hoster(wrappedSource, /*data*/undefined)
 					}else{
-						hoster = oldWrappedJs[path] = hostFile(result.hostUrl, 'js', wrappedSource, data, '')
+						hoster = oldWrappedJs[path] = hostFile(result.hostUrl, 'js', wrappedSource,/* data*/undefined, '')
 					}
 					
 					cb(undefined, result)
@@ -288,6 +290,7 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log
 						_.assertArray(jsMappings[r.name])
 					
 						includedMappings.push(jsMappings[r.name])
+						if(!fragmentMappings[r.name]) _.errout('cannot find fragmentMappings: ' + r.name)
 						_.assertArray(fragmentMappings[r.name])
 						includedFragments.push(fragmentMappings[r.name])
 					})
