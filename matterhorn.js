@@ -645,7 +645,7 @@ function prepare(config, cb){
 		
 		wrapper.stub = function(){}
 		
-		wrapper.imagery = function(app, genName, mimeType, genFunction){
+		/*wrapper.imagery = function(app, genName, mimeType, genFunction){
 			
 			_.assertLength(arguments, 4);
 			
@@ -669,12 +669,7 @@ function prepare(config, cb){
 					res.header('Expires', 'Sat, 28 Apr 2100 10:00:00 GMT')
 					res.head('Content-Type', mimeType)
 					res.send(buffer)
-					/*
-					res.send(buffer, {
-						'Cache-Control': 'public max-age=2592000', 
-						'Expires': 'Sat, 28 Apr 2100 10:00:00 GMT',
-						'Content-Type': mimeType
-						});*/
+					
 				});
 				
 				return urlPattern;
@@ -684,7 +679,7 @@ function prepare(config, cb){
 			
 			//console.log(config.port + ' ' + (wrapper.isSecure ? 'https ' : 'http ') + colourize(app.name, cyan) + ' imagery ' + colourize(genName, green));
 			alog(appName, 'imagery', config.port + ' ' + (wrapper.isSecure ? 'https ' : 'http ') + app.name + ' imagery ' + genName);
-		}
+		}*/
 
 		
 		function javascriptRedirect(res, url){

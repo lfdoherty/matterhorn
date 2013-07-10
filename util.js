@@ -11,6 +11,8 @@ function removeHashPadding(hash){
 	return hash.replace(/=/gi,'').replace(/\+/gi,'_').replace(/\//gi,'_');
 }
 function computeHash(str){
+	str = str.replace(/[ \t\r]+/g,' ')//replace all whitespace to avoid meaningless, platform-dependent differences
+	
 	var hash = crypto.createHash('md5');
 	hash.update(str);
 	var h = hash.digest('base64');
