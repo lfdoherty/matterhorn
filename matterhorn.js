@@ -258,6 +258,8 @@ function prepare(config, cb){
 	var types = {}
 	var etags = {}
 	
+	var dynamicJavascript = {}
+	
 	function hostFile(url, type, content, gzippedContent, etag){
 		_.assertLength(arguments, 5)
 		_.assertBuffer(content)
@@ -270,15 +272,6 @@ function prepare(config, cb){
 		//console.log('hosting: ' + url)
 		if(!hosted[url]){
 			hosted[url] = true;
-
-			/*wrapper.get(url, function(req, res){
-			
-				if(unhosted[url]){
-					res.send(410);
-				}else{
-					serveFile(req, res, type, hostedContent[url], hostedZippedContent[url], etag||'"#"');
-				}
-			});*/
 		}
 		return function(newContent, newGzippedContent){
 			_.assertBuffer(newContent)
@@ -352,14 +345,6 @@ function prepare(config, cb){
 			};
 		}
 
-		/*
-		function renderWrapping(app, expressApp, pageDef, title, wrappedContent){
-	
-			var parts = makeWrappingParts(app, expressApp, pageDef, title);
-			
-			return parts.header + parts.javascript + wrappedContent + parts.footer;
-		}*/
-
 		function makeTypeCollectionMethod(type){
 			return function(app, externalName, def){
 				_.assertLength(arguments, 3);
@@ -399,51 +384,14 @@ function prepare(config, cb){
 				if(unhosted[url]){
 					res.send(410);
 				}else{
+					if(!hostedContent[url]){
+						_.errout('no hosted content for url: ' + url)
+					}
 					_.assertDefined(hostedContent[url])
 					serveFile(req, res, types[url], hostedContent[url], hostedZippedContent[url], etags[url]||'"#"');
 				}
 			});
 		}
-		/*
-		var hosted = {};
-		var unhosted = {};
-		
-		var hostedContent = {};
-		var hostedZippedContent = {};
-		var etags = {}
-		
-		function hostFile(url, type, content, gzippedContent, etag){
-			_.assertLength(arguments, 5)
-			_.assertBuffer(content)
-			
-			delete unhosted[url];
-			hostedContent[url] = content;
-			hostedZippedContent[url] = gzippedContent;
-			etags[url] = etag
-			console.log('hosting(' + wrapper.isSecure + ') ' + url)
-			if(!hosted[url]){
-				hosted[url] = true;
-
-				wrapper.get(url, function(req, res){
-				
-					if(unhosted[url]){
-						res.send(410);
-					}else{
-						serveFile(req, res, type, hostedContent[url], hostedZippedContent[url], etag||'"#"');
-					}
-				});
-			}
-			return function(newContent, newGzippedContent){
-				_.assertBuffer(newContent)
-				hostedContent[url] = newContent
-				hostedZippedContent[url] = newGzippedContent
-			}
-		}
-		function unhostFile(url){
-			//console.log('unhosting ' + url)
-			unhosted[url] = true;
-		}
-		*/
 		
 		var pageLookup = {}
 		
@@ -497,10 +445,21 @@ function prepare(config, cb){
 				}
 			}
 			
+			function resolveDynamic(name){
+				//_.errout('TODO: ' + name)
+				name = name.substr(1)
+				
+				var s = dynamicJavascript[name]
+				if(!s){
+					_.errout('no dynamic javascript registered (yet?): ' + name)
+				}
+				return s
+			}
+			
 			pageLookup[pageDef.url] = pageDef
 			pageDef.extendPage = function(app, jsFilePath){
 				var loaded = false
-				jsFiles.load(app, jsFilePath, hostFile, unhostFile, log, function(err, includeJsFunc){
+				jsFiles.load(app, jsFilePath, hostFile, unhostFile, log, resolveDynamic, function(err, includeJsFunc){
 					if(err) _.errout(err);
 					loaded = true
 					
@@ -517,7 +476,7 @@ function prepare(config, cb){
 			
 				//console.log('loading files: ' + wrapper.isSecure + ' ' + pageDef.url)
 				if(pageDef.js){
-					jsFiles.load(app, pageDef.js, hostFile, unhostFile, log, function(err, includeJsFunc){
+					jsFiles.load(app, pageDef.js, hostFile, unhostFile, log, resolveDynamic, function(err, includeJsFunc){
 						if(err) _.errout(err);
 						_.assertFunction(includeJsFunc)
 						//console.log('got include: ' + wrapper.isSecure + ' ' + pageDef.url)
@@ -610,11 +569,16 @@ function prepare(config, cb){
 					b.urlPrefix = config.prefix || '';
 				
 
-					var variableScript = '\n<script>\n';
+					var variableScript = '\n<script>\nif(!window.page) window.page = {};\npage.params = {\n';
+					var first = true
 					_.each(b, function(value, attr){
-						variableScript += 'var ' + attr + ' = '  + JSON.stringify(value) + ';\n';
+						if(value !== undefined){
+							if(!first) variableScript += ','
+							first = false
+							variableScript += '"' + attr + '": '  + JSON.stringify(value) + '\n';
+						}
 					});
-					variableScript += '</script>\n';
+					variableScript += '\n}\n</script>\n';
 
 					var extraJs = '';
 					_.each(jsFiles, function(jsFile){
@@ -776,9 +740,14 @@ function prepare(config, cb){
 			var url;
 			var hash;
 			var gzipped;
+
+			var symbol = 'dynamic_' + name.replace(/-/gi,'').replace(/\./gi,'_')// + symbolHash
+			
 			cb(function(jsStr){
 
 				jsStr = InDebugEnvironment ? jsStr : uglify(jsStr);
+				
+				jsStr = jsFiles.wrapJsSource(jsStr, symbol)
 
 				var jsBuf = jsStr
 				if(_.isString(jsBuf)) jsBuf = new Buffer(jsBuf)
@@ -787,11 +756,20 @@ function prepare(config, cb){
 				var hashStr = utilFiles.hashStr(jsStr);
 				if(hashStr !== hash){
 
-					url = urlPrefix+hashStr+'/'+name+'.js';
-					hostFile(url, 'js', jsBuf, gzipped, '');
-					//var jsBuf = new Buffer(jsStr)
-				
-					zlib.gzip(jsBuf, function(err, data){
+					url = urlPrefix+name+'.js?h='+hashStr;
+					
+					var hostUrl = urlPrefix+name+'.js'
+					
+					//var symbolHash = u.hashStr()
+					
+					console.log('registered dynamic javascript: ' + name + ' ' + url)
+
+					dynamicJavascript[name+'.js'] = {symbol: symbol, url: url, hash: hashStr}
+					
+					hostFile(hostUrl, 'js', jsBuf, gzipped, '');
+					hostForWrapper(url)
+					
+					/*zlib.gzip(jsBuf, function(err, data){
 						if(err) _.errout(err);
 						gzipped = data;
 						log('zipped ' + name + ' ' + data.length + ' from ' + jsStr.length + ' chars');
@@ -800,7 +778,7 @@ function prepare(config, cb){
 
 						hostFile(url, 'js', jsBuf, gzipped, '');
 						hostForWrapper(url)
-					});
+					});*/
 				}
 				
 				return url;

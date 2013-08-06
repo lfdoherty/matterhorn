@@ -20,13 +20,15 @@ var pathHashSuffix = {}
 var fragmentGetters = {}
 var fragmentMappings = {}
 
-exports.load = function(app, jsName, hostFile, unhostFile, logger, cb){
-	_.assertLength(arguments, 6)
+exports.load = function(app, jsName, hostFile, unhostFile, logger, resolveDynamic, cb){
+	_.assertLength(arguments, 7)
 
+	_.assertFunction(resolveDynamic)
+	
 	//console.log('beginning loading: ' + jsName)
 	var resolvedName = reqs.resolve(app, jsName, 'js', logger)//, 'js', 'js')
 	//console.log('loading: ' + resolvedName.name)
-	loadAndWrapJs(resolvedName.name, resolvedName.module, hostFile, unhostFile, logger, function(err, res){
+	loadAndWrapJs(resolvedName.name, resolvedName.module, hostFile, unhostFile, logger, resolveDynamic, function(err, res){
 		//console.log('here: ' + resolvedName.name)
 		if(err){ cb(err); return}
 		function includeFunction(){
@@ -40,6 +42,7 @@ exports.load = function(app, jsName, hostFile, unhostFile, logger, cb){
 				var real = [hl.url+headerHashes[resolvedName.name]]
 				for(var i=0;i<all.length;++i){
 					var a = all[i]
+					_.assertString(a.url)
 					var full = a.url+pathHashSuffix[a.path]
 					if(real.indexOf(full) === -1){
 						real.push(full)
@@ -111,6 +114,7 @@ function computeHeader(hostFile, unhostFile, path, name){
 	var sorted = [].concat(all)
 	sorted = sorted.sort()
 	sorted.forEach(function(symbol){
+		_.assertString(symbol)
 		headerSource += 'var ' + symbol + ' = {_module_wrapper: {}};\n'
 		headerSource += '' + symbol + '._module_wrapper = {parent: {exports: window}, exports: ' + symbol + '};\n'
 	})
@@ -132,7 +136,19 @@ function getSymbol(path){
 	var symbol = '_' + name.replace(/-/gi,'').replace(/\./gi,'_') + symbolHash
 	return symbol
 }
-var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log, cb){
+
+function wrapJsSource(src, symbol){
+	var wrappedSource = 
+		'(function(exports, module, global){\n\n' + 
+		src +
+		'\n\n})(' + symbol + ', ' + symbol + '._module_wrapper,window)\n'+
+		'if('+symbol+'._module_wrapper.exports !== ' + symbol + ') ' + symbol+'='+symbol+'._module_wrapper.exports;'
+	
+	return wrappedSource
+}
+exports.wrapJsSource = wrapJsSource
+
+var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log, resolveDynamic, cb){
 	_.assertString(path)
 	_.assertFunction(log)
 	_.assertFunction(cb)
@@ -200,11 +216,14 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log
 				
 				selfUrlList[0] = {url: result.hostUrl, path: path}
 				
-				var wrappedSource = 
+				/*var wrappedSource = 
 					'(function(exports, module, global){' + 
 					changedSource +
 					'})(' + symbol + ', ' + symbol + '._module_wrapper,window)\n'+
 					'if('+symbol+'._module_wrapper.exports !== ' + symbol + ') ' + symbol+'='+symbol+'._module_wrapper.exports;'
+				*/
+				
+				var wrappedSource = wrapJsSource(changedSource, symbol)
 					
 				result.unzipped = wrappedSource
 				
@@ -260,8 +279,23 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log
 					if(isJson){//path.length-4){
 						//_.errout('eRWRwerlkwejrewlkrjwelrkjwerlkwje')
 						r = reqs.resolve(app, req.substr(0,req.length-5), 'json', log, pathModule.dirname(path), path)
+					}else if(req[0] === ':'){
+						//_.errout('TODO dynamic: ' + req)
+						r = resolveDynamic(req)
+						
+						mapping[req] = r.symbol
+						
+						var dummyPath = 'dummy_'+Math.random()
+						_.assertString(r.hash)
+						console.log('remembering hashSuffix: ' + path + ' ' + r.hash + ' ' + r.url)
+						pathHashSuffix[dummyPath] = '?h='+r.hash
+						var dynArr = [{url: r.url.substr(0, r.url.indexOf('?')), path: dummyPath}]//urlsForJs[req[0]] 
+						allUrls.push(dynArr)
+						includedMappings.push([r.symbol])
+						reqCdl()
+						return
 					}else{
-						r = reqs.resolve(app, req, 'js', log, pathModule.dirname(path), path)
+						r = reqs.resolve(app, req, 'js', log, pathModule.dirname(path), path, path)
 					}
 					
 					if(r === undefined){//means reqs.resolve decided it wasn't a valid require statement
@@ -281,7 +315,7 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log
 					if(urlsForOther === undefined) urlsForOther = urlsForJs[r.name] = []
 					if(allUrls.indexOf(urlsForOther) === -1) allUrls.push(urlsForOther)
 
-					loadAndWrapJs(r.name, r.module, hostFile, unhostFile, log, function(err, rm){
+					loadAndWrapJs(r.name, r.module, hostFile, unhostFile, log, resolveDynamic, function(err, rm){
 						if(err) throw err
 						_.assertString(r.originalName)
 

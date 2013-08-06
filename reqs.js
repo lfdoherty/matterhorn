@@ -71,6 +71,9 @@ function replaceRequires(str, substitutionNames, fragmentSubstitutionNames){
 			var reqName = extractReqFromLine(line)
 			//console.log('processing require line: ' + line + ' ' + reqName)
 			var after = line.substr(line.indexOf(')')+1)
+			if(reqName === 'page'){
+				continue
+			}
 			if(firefoxModuleBlacklist.indexOf(reqName) !== -1){
 				lines[i] = line.substr(0, line.indexOf('=')) + ' = window'+after
 				continue
@@ -149,6 +152,10 @@ function resolveRequire(currentModule, req, special, log, currentPath, currentNa
 		log('ignoring browser-side require that may be the name of a module Firefox addons have to include to get basic Javascript functionality for some stupid reason: ' + req)
 		return
 	}
+	
+	if(req === 'page'){//ignoring pagebox require
+		return
+	}
 
 	//console.log('resolve: ' + req)
 	//_.assertLength(arguments, 3)
@@ -157,7 +164,7 @@ function resolveRequire(currentModule, req, special, log, currentPath, currentNa
 	//_.assertString(currentPath)
 	//_.assertDefined(currentModule.module)
 	if(currentModule.module === undefined){
-		_.errout('module used in matterhorn must export its module as .module: ' + JSON.stringify(Object.keys(currentModule)) + currentModule.name)
+		_.errout('module used in matterhorn must export its module as .module: ' + JSON.stringify(Object.keys(currentModule)) + currentModule.name + ' ' + currentPath)
 	}
 	currentPath = currentPath || pathModule.dirname(currentModule.module.filename)
 	
