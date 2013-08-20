@@ -571,20 +571,27 @@ function prepare(config, cb){
 
 					var variableScript = '\n<script>\nif(!window.page) window.page = {};\npage.params = {\n';
 					var first = true
-					_.each(b, function(value, attr){
+					//_.each(b, function(value, attr){
+					var bKeys = Object.keys(b)
+					//.forEach(function(attr){
+					for(var i=0;i<bKeys.length;++i){
+						var attr = bKeys[i]
+						var value = b[attr]
 						if(value !== undefined){
 							if(!first) variableScript += ','
 							first = false
 							variableScript += '"' + attr + '": '  + JSON.stringify(value) + '\n';
 						}
-					});
+					}
 					variableScript += '\n}\n</script>\n';
 
 					var extraJs = '';
-					_.each(jsFiles, function(jsFile){
+					//_.each(jsFiles, function(jsFile){
+					for(var i=0;i<jsFiles.length;++i){
+						var jsFile = jsFiles[i]
 						_.assertString(jsFile);
 						extraJs += '<script src="' + (jsFile.indexOf('://') === -1 ? b.urlPrefix : '') + jsFile + '"></script>\n';
-					});
+					}
 
 					var title =  b.title || pageDef.title || app.name || ''
 					//console.log('TITLE OPTIONS: ' + b.title + ' ' + pageDef.title + ' ' + app.name);
