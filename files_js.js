@@ -6,6 +6,8 @@ var fs = require('fs')
 
 var _ = require('underscorem')
 
+var resolve = require('resolve')
+
 var fragments = require('./files_fragments')
 
 var reqs = require('./reqs')
@@ -273,6 +275,11 @@ var loadAndWrapJs = _.memoizeAsync(function(path, app, hostFile, unhostFile, log
 				requirements.forEach(function(req){
 				
 					var r
+					
+					if(resolve.isCore(req)){
+						reqCdl()
+						return
+					}
 					
 					//if(req.indexOf('editlookup') !== -1) console.log(':'+req)
 					var isJson = req.indexOf('.json') !== -1

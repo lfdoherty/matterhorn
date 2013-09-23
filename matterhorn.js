@@ -500,6 +500,8 @@ function prepare(config, cb){
 					cssFiles.load(app, pageDef.css, hostFile, unhostFile, imageryImportFunction, log, function(err, includeCssFunc){
 						if(err) throw err
 						
+						_.assertFunction(includeCssFunc)
+						
 						setTimeout(function(){includeCssFunc().forEach(hostForWrapper)},1000)
 						
 						includeCss = includeCssFunc

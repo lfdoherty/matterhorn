@@ -68,11 +68,29 @@ function cleanStylusContent(content){
 	return lines.join('\n');
 }
 
+var cssParse = require('css-parse')
 
 function stylusTransform(content, name, imageryImportFunction, cb){
 	stylus(content).set('filename', name).define('imagery', imageryImportFunction).render(function(err, css){
 
-		if (err) throw err;
+		if (err){
+		
+			try{
+				cssParse(content)
+			}catch(e){
+				if(e){
+					console.log('** NOT CSS **')
+					throw err
+				}
+			}
+			
+			console.log('STYLUS FAILED, FELL BACK TO CSS: ' + name)
+			
+			cb(content)
+			return
+		
+			//throw err;
+		}
 
 		cb(css);
 	});

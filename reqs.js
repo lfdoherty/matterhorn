@@ -8,7 +8,7 @@ exports.replaceRequires = replaceRequires
 exports.resolve = resolveRequire
 
 var _ = require('underscorem')
-
+var resolve = require('resolve')
 
 function trim(str){
 	return str.replace(/^\s+|\s+$/g,'');
@@ -31,7 +31,8 @@ function extractFragmentReqFromLine(line){
 	return reqString
 }
 function lineIsRequire(line){
-	var ri = line.indexOf('require(')
+	var ri = line.indexOf('require("')
+	if(ri === -1) ri = line.indexOf("require('")
 	var ci = line.indexOf('//')
 	return (ri !== -1 && (ci === -1 || ci > ri))
 }
@@ -71,6 +72,8 @@ function replaceRequires(str, substitutionNames, fragmentSubstitutionNames){
 			var reqName = extractReqFromLine(line)
 			//console.log('processing require line: ' + line + ' ' + reqName)
 			var after = line.substr(line.indexOf(')')+1)
+
+
 			if(reqName === 'page'){
 				continue
 			}
@@ -80,6 +83,9 @@ function replaceRequires(str, substitutionNames, fragmentSubstitutionNames){
 			}
 			var sub = substitutionNames[reqName]
 			if(sub === undefined){
+				if(resolve.isCore(reqName)){
+					continue
+				}
 				console.log('got ' + JSON.stringify(substitutionNames))
 				throw new Error('but cannot find required library: ' + reqName)
 			}
