@@ -835,6 +835,7 @@ function prepare(config, cb){
 	}
 
 	var express = require('express');
+	//var connect = require('connect')
 
 	//make express secure app actually secure
 	var privateKey, certificate;
@@ -851,12 +852,24 @@ function prepare(config, cb){
 	
 	var localApp = express()//.createServer()
 	//localApp.use(express.bodyParser())
-	var bodyParserConfig = {
+	var MaxFileSizeGlobalBytes = '1024mb'
+	var multipartConfig = {
 		uploadDir: './files',
-		keepExtensions: true
+		keepExtensions: true,
+		limit: MaxFileSizeGlobalBytes
 	}
-	localApp.use(express.bodyParser(bodyParserConfig))
+
+
+	//localApp.use(express.multipart({ limit: MaxFileSizeGlobalBytes }));	
+	//localApp.use(express.multipart({ limit: MaxFileSizeGlobalBytes }));	
+
+	//localApp.use(express.bodyParser(bodyParserConfig))
+	//localApp.use(express.cookieParser())
+	localApp.use(express.json());
+	localApp.use(express.urlencoded());
+	localApp.use(express.multipart(multipartConfig));
 	localApp.use(express.cookieParser())
+
 	
 	localApp.settings.env = envType;
 	
@@ -894,8 +907,17 @@ function prepare(config, cb){
 	if(gotHttpsStuff){
 
 		var localSecureApp = express()
-		localSecureApp.use(express.bodyParser(bodyParserConfig))
+
+		//localSecureApp.use(express.multipart({ limit: MaxFileSizeGlobalBytes }));	
+		//localSecureApp.use(express.multipart({ limit: MaxFileSizeGlobalBytes }));	
+		
+		localSecureApp.use(express.json());
+		localSecureApp.use(express.urlencoded());
+		localSecureApp.use(express.multipart(multipartConfig));
+
+		//localSecureApp.use(express.bodyParser(bodyParserConfig))
 		localSecureApp.use(express.cookieParser());
+
 		
 		if(config.makeSecureServerHttp){
 			localSecureApp.enable('trust proxy')
