@@ -11,10 +11,15 @@ var _ = require('underscorem');
 var uglify = require('uglify-js');
 var stylus = require('stylus');
 
+//var browserify = require('browserify');
+var watchify = require('watchify')
+//var tagify = require('tagify');
+var ignoreit = require('ignoreit')
+
 var zlib = require('zlib');
 
 var changedetector = require('./changedetector');
-var jsFiles = require('./files_js')
+//var jsFiles = require('./files_js')
 var cssFiles = require('./files_css')
 var fragmentFiles = require('./files_fragments')
 var utilFiles = require('./util')
@@ -261,7 +266,7 @@ function prepare(config, cb){
 	var dynamicJavascript = {}
 	
 	function hostFile(url, type, content, gzippedContent, etag){
-		_.assertLength(arguments, 5)
+		//_.assertLength(arguments, 5)
 		_.assertBuffer(content)
 		
 		delete unhosted[url];
@@ -269,7 +274,7 @@ function prepare(config, cb){
 		hostedZippedContent[url] = gzippedContent;
 		types[url] = type
 		etags[url] = etag
-		//console.log('hosting: ' + url)
+		console.log('hosting: ' + url)
 		if(!hosted[url]){
 			hosted[url] = true;
 		}
@@ -287,8 +292,8 @@ function prepare(config, cb){
 	function makeExpressWrapper(wrapper){
 
 
-		function makeWrappingParts(app, expressApp, pageDef, title, includeJs, includeCss, iconUrl){
-			_.assertFunction(includeJs)
+		function makeWrappingParts(app, expressApp, pageDef, title, /*includeJs, */includeCss, iconUrl){
+			//_.assertFunction(includeJs)
 			
 			var header = '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" ' + 
 				'"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">\n'+
@@ -304,10 +309,10 @@ function prepare(config, cb){
 				});
 			}
 			//console.log('including fragments')
-			includeJs.includeFragments().forEach(function(e){
+			/*includeJs.includeFragments().forEach(function(e){
 				
 				header += '<script type="text/javascript" src="' + config.prefix + e.url + '"></script>';
-			})
+			})*/
 	
 			var headerEnd = ''
 			if(pageDef.icon){
@@ -318,13 +323,13 @@ function prepare(config, cb){
 		
 			var middle = '';
 			
-			if(includeJs){
+			/*if(includeJs){
 				var toInclude = includeJs()
 				//console.log(JSON.stringify(toInclude, null, 2))
 				toInclude.forEach(function(url){
 					middle += '<script type="text/javascript" src="' + config.prefix + url + '"></script>';
 				});
-			}
+			}*/
 
 			var footer = '</body></html>';
 			
@@ -376,7 +381,7 @@ function prepare(config, cb){
 			
 			hostedForWrapperYet[url] = true;
 			
-			//console.log('hosting url(' + wrapper.isSecure+'): ' + url)
+			console.log('hosting url(' + wrapper.isSecure+'): ' + url)
 			//console.log(JSON.stringify(Object.keys(hostedContent)))
 
 			wrapper.get(url, function(req, res){
@@ -414,6 +419,98 @@ function prepare(config, cb){
 			//if(_.isString(pageDef.css)) pageDef.css = [pageDef.css];
 			log('processing page: ' + pageDef.url)
 			//console.log(JSON.stringify(pageDef))
+			
+			/*var resolve = require('resolve')
+			var modulePath = pathModule.dirname(app.module.filename)
+			var realPath
+			try{
+				realPath = resolve.sync(pageDef.js, { basedir: modulePath})
+			}catch(e){
+				realPath = resolve.sync(pageDef.js, { basedir: modulePath+'/js'})
+			}
+			var name = pathModule.basename(realPath)
+			var jsUrl = '/static/f/bundle_'+name//+'.js'
+			
+			
+			//var realContent
+			;*/
+
+			var realContentBuf
+			var hash
+			var fullJsUrl
+
+			var modulePath = pathModule.dirname(app.module.filename)
+			//console.log('modulePath: ' + modulePath)
+			
+			var resolved = pathModule.resolve(modulePath+'/'+pageDef.js)
+
+			var name = pathModule.basename(resolved+'.js')
+			
+			var jsUrl = '/static/f/bundle_'+name//+'.js'
+			
+			wrapper.get(jsUrl, function(req, res){
+				function finish(){
+					if(!realContentBuf){
+						setTimeout(finish, 1000)
+						return
+					}
+					serveFile(req, res, 'js', realContentBuf, undefined, '#'+hash)//etags[url]||'"#"');
+				}
+				finish()
+			})
+
+			var opts = {
+				//transformKey: function(){
+				//	throw new Error('TODO')
+				//}
+			}
+			var b = watchify(resolved, opts)
+			b.transform(ignoreit)
+			b.on('update', function (ids){
+				buildBundle()
+			})
+			
+			function buildBundle(){
+				//b.register(ignorify);
+			//	b.use(tagify)
+				
+				/*var allWatchers = []
+				function closeAllWatchers(){
+					allWatchers.forEach(function(w){
+						w.close()
+					})
+				}*/
+				
+				
+				/*b.on('file', function (file, id, parent){
+					//fs.watchFile(file, {interval: 200}, function (curr, prev) {
+					var watcher = fs.watch(file, function(event, filename){
+						if(event === 'change'){
+							closeAllWatchers()
+							buildBundle()
+						}
+					})
+					allWatchers.push(watcher)
+				})*/
+				
+				
+				
+				var bundle = b.bundle({debug: true}, function(err, res){
+					if(err) throw err
+					//console.log(res.length)//JSON.stringify(res))
+					hash = utilFiles.hashStr(res)
+					fullJsUrl = jsUrl + '?h='+hash
+					console.log('bundle url: ' + fullJsUrl)
+					//hostForWrapper(jsUrl)
+				
+					//realContent = res
+					realContentBuf = new Buffer(res)
+					//var resBuf = new Buffer(res)
+					//hostFile(jsUrl, 'js', new Buffer(res))
+				})
+			}
+			buildBundle()
+			
 			if(pageDef.js) _.assertString(pageDef.js)
 			if(pageDef.css) _.assertString(pageDef.css)
 		
@@ -426,7 +523,7 @@ function prepare(config, cb){
 			var includeJs
 			var includeCss
 			
-			var extendIncludeFunctions = {}
+			/*var extendIncludeFunctions = {}
 			function realIncludeJs(){
 				if(!includeJs) return []
 				
@@ -443,7 +540,7 @@ function prepare(config, cb){
 				}else{
 					return []
 				}
-			}
+			}*/
 			
 			function resolveDynamic(name){
 				//_.errout('TODO: ' + name)
@@ -456,6 +553,7 @@ function prepare(config, cb){
 				return s
 			}
 			
+			
 			pageLookup[pageDef.url] = pageDef
 			pageDef.extendPage = function(app, jsFilePath){
 				var loaded = false
@@ -463,8 +561,8 @@ function prepare(config, cb){
 					if(err) _.errout(err);
 					loaded = true
 					
-					setTimeout(function(){includeJsFunc().forEach(hostForWrapper)},3000)
-					setTimeout(function(){includeJsFunc.includeFragments().forEach(function(obj){hostForWrapper(obj.url)})},3000)
+					//setTimeout(function(){includeJsFunc().forEach(hostForWrapper)},3000)
+					//setTimeout(function(){includeJsFunc.includeFragments().forEach(function(obj){hostForWrapper(obj.url)})},3000)
 					
 					//_.assert(!loaded)//TODO can this ever happen?
 					_.assertFunction(includeJsFunc)
@@ -475,7 +573,7 @@ function prepare(config, cb){
 			try{
 			
 				//console.log('loading files: ' + wrapper.isSecure + ' ' + pageDef.url)
-				if(pageDef.js){
+				/*if(pageDef.js){
 					jsFiles.load(app, pageDef.js, hostFile, unhostFile, log, resolveDynamic, function(err, includeJsFunc){
 						if(err) _.errout(err);
 						_.assertFunction(includeJsFunc)
@@ -493,7 +591,7 @@ function prepare(config, cb){
 						}
 					}, 5000)
 
-				}
+				}*/
 				
 				
 				if(pageDef.css){
@@ -559,9 +657,24 @@ function prepare(config, cb){
 				
 					jsFiles = jsFiles || [];
 					
-					for(var i=0;i<jsFiles.length;++i){
-						if(typeof(jsFiles[i]) !== 'string') _.errout('ERROR: jsFiles list contains non-string: ' + jsFiles[i]);
+					if(!fullJsUrl){
+						 setTimeout(function(){
+						 	finish(req, res, b, jsFiles)
+						 },1000)
+						 return
 					}
+					for(var i=0;i<jsFiles.length;++i){
+						if(typeof(jsFiles[i]) !== 'string'){
+							 console.log('ERROR: jsFiles list contains non-string: ' + jsFiles[i]);
+							 setTimeout(function(){
+							 	finish(req, res, b, jsFiles)
+							 },1000)
+							 return
+						}
+					}
+
+					jsFiles.push(fullJsUrl)
+					
 				
 					if(b === undefined){
 						return;
@@ -598,7 +711,7 @@ function prepare(config, cb){
 					var title =  b.title || pageDef.title || app.name || ''
 					//console.log('TITLE OPTIONS: ' + b.title + ' ' + pageDef.title + ' ' + app.name);
 					
-					var parts = makeWrappingParts(app, local, pageDef, title, realIncludeJs, includeCss, iconUrl);
+					var parts = makeWrappingParts(app, local, pageDef, title, /*realIncludeJs, */includeCss, iconUrl);
 		
 					var html = parts.headerStart + variableScript + parts.javascript + extraJs + parts.headerEnd + /*parts.javascript + extraJs + */parts.footer;
 
@@ -840,51 +953,46 @@ function prepare(config, cb){
 	//make express secure app actually secure
 	var privateKey, certificate;
 	var gotHttpsStuff = false;
-	try{
+	/*try{
 		privateKey = fs.readFileSync(process.cwd() + '/privatekey.pem').toString();
 		certificate = fs.readFileSync(process.cwd() + '/certificate.pem').toString();
 		gotHttpsStuff = true;
 	}catch(e){
 		console.log("WARNING: Https access disabled, since one or both of privatekey.pem and certificate.pem were not found or could not be read");
-	}	
+	}*/	
 	
 	gotHttpsStuff = gotHttpsStuff || config.makeSecureServerHttp
 	
-	var localApp = express()//.createServer()
-	//localApp.use(express.bodyParser())
-	var MaxFileSizeGlobalBytes = '1024mb'
-	var multipartConfig = {
-		uploadDir: './files',
-		keepExtensions: true,
-		limit: MaxFileSizeGlobalBytes
-	}
-
-
-	//localApp.use(express.multipart({ limit: MaxFileSizeGlobalBytes }));	
-	//localApp.use(express.multipart({ limit: MaxFileSizeGlobalBytes }));	
-
-	//localApp.use(express.bodyParser(bodyParserConfig))
-	//localApp.use(express.cookieParser())
-	localApp.use(express.json());
-	localApp.use(express.urlencoded());
-	localApp.use(express.multipart(multipartConfig));
-	localApp.use(express.cookieParser())
+	if(!config.disableHttp){
+		var localApp = express()
+		var MaxFileSizeGlobalBytes = '1024mb'
+		var multipartConfig = {
+			uploadDir: './files',
+			keepExtensions: true,
+			limit: MaxFileSizeGlobalBytes
+		}
+	
+		localApp.use(express.json());
+		localApp.use(express.urlencoded());
+		localApp.use(express.multipart(multipartConfig));
+		localApp.use(express.cookieParser())
 
 	
-	localApp.settings.env = envType;
+		localApp.settings.env = envType;
 	
-	localApp.settings.port = config.port;
+		localApp.settings.port = config.port;
 
-	makeExpressWrapper(localApp);
+		makeExpressWrapper(localApp);
 
-	localApp.set('host', 'http://' + hostName);
-	localApp.set('securehost', 'https://' + hostName);
+		localApp.set('host', 'http://' + hostName);
+		localApp.set('securehost', 'https://' + hostName);
 
-	if(envType === 'development'){
-		localApp.post('/serverchanged', serverChangedCb);
+		if(envType === 'development'){
+			localApp.post('/serverchanged', serverChangedCb);
+		}
+
+		localApp.use(express.errorHandler({ dumpExceptions: true, showStack: true }));
 	}
-
-	localApp.use(express.errorHandler({ dumpExceptions: true, showStack: true }));
 
 	function serverChangedCb(req, res){
 
@@ -907,23 +1015,26 @@ function prepare(config, cb){
 	if(gotHttpsStuff){
 
 		var localSecureApp = express()
-
-		//localSecureApp.use(express.multipart({ limit: MaxFileSizeGlobalBytes }));	
-		//localSecureApp.use(express.multipart({ limit: MaxFileSizeGlobalBytes }));	
-		
+		var MaxFileSizeGlobalBytes = '1024mb'
+		var multipartConfig = {
+			uploadDir: './files',
+			keepExtensions: true,
+			limit: MaxFileSizeGlobalBytes
+		}
+	
 		localSecureApp.use(express.json());
 		localSecureApp.use(express.urlencoded());
 		localSecureApp.use(express.multipart(multipartConfig));
-
-		//localSecureApp.use(express.bodyParser(bodyParserConfig))
-		localSecureApp.use(express.cookieParser());
+		localSecureApp.use(express.cookieParser())
 
 		
 		if(config.makeSecureServerHttp){
 			localSecureApp.enable('trust proxy')
 		}
-		  
-		localApp.settings.securePort = config.securePort;
+		 
+		if(!config.disableHttp){
+			localApp.settings.securePort = config.securePort;
+		}
 
 		localSecureApp.settings.env = envType;
 
@@ -939,9 +1050,11 @@ function prepare(config, cb){
 			localSecureApp.post('/serverchanged', serverChangedCb);
 		}
 	}
-	
-	localApp.getPort = function(){
-		return config.port;
+
+	if(!config.disableHttp){	
+		localApp.getPort = function(){
+			return config.port;
+		}
 	}
 	var local = {
 		getServer: function(){
@@ -980,26 +1093,34 @@ function prepare(config, cb){
 				localApp.getSecureServer = function(){return secureS;}
 			}else{*/
 				var secureS = https.createServer({key: privateKey, cert: certificate}, localSecureApp)
-				localApp.getSecureServer = function(){return secureS;}
+				if(!config.disableHttp){
+					localApp.getSecureServer = function(){return secureS;}
+				}
 			//}
 		}else{
 				var secureS = http.createServer(localSecureApp)
-				localApp.getSecureServer = function(){return secureS;}
+				if(!config.disableHttp){
+					localApp.getSecureServer = function(){return secureS;}
+				}
 		}
 	}	
 
-	if(config.localOnly){
-		var s = http.createServer(localApp)
-		localApp.getServer = function(){return s;}
-	}else{
-		var s = http.createServer(localApp)
-		localApp.getServer = function(){return s;}
+	if(!config.disableHttp){
+		if(config.localOnly){
+			var s = http.createServer(localApp)
+			localApp.getServer = function(){return s;}
+		}else{
+			var s = http.createServer(localApp)
+			localApp.getServer = function(){return s;}
+		}
 	}
-	
+		
 	function after(readyCb){	
 
-		localApp.javascriptRedirectToSecure = function(res, url){
-			res.send(redirHeader + 'https://" + hostName + ":' + config.securePort + url + redirFooter);
+		if(!config.disableHttp){
+			localApp.javascriptRedirectToSecure = function(res, url){
+				res.send(redirHeader + 'https://" + hostName + ":' + config.securePort + url + redirFooter);
+			}
 		}
 		if(localSecureApp){
 			localSecureApp.javascriptRedirectToInsecure = function(res, url){
@@ -1012,13 +1133,14 @@ function prepare(config, cb){
 				return config.securePort;
 			}
 		}
-		localApp.getPort = function(){
-			return config.port;
-		},
-		localApp.getSecurePort = function(){
-			return config.securePort;
+		if(!config.disableHttp){
+			localApp.getPort = function(){
+				return config.port;
+			},
+			localApp.getSecurePort = function(){
+				return config.securePort;
+			}
 		}
-
 
 		var cdl = _.latch(1 + (gotHttpsStuff ? 1 : 0), function(){
 
@@ -1041,14 +1163,16 @@ function prepare(config, cb){
 			}
 		}*/
 		
-		if(config.localOnly){
-			//localApp.listen(config.port, '127.0.0.1', cdl);
-			s.listen(realPort, '127.0.0.1', cdl);
-			//http.createServer(s).listen(80);
-		}else{
-			//localApp.listen(config.port, cdl);
-			console.log('http listening on ' + config.port)
-			s.listen(realPort, cdl);
+		if(!config.disableHttp){
+			if(config.localOnly){
+				//localApp.listen(config.port, '127.0.0.1', cdl);
+				s.listen(realPort, '127.0.0.1', cdl);
+				//http.createServer(s).listen(80);
+			}else{
+				//localApp.listen(config.port, cdl);
+				console.log('http listening on ' + config.port)
+				s.listen(realPort, cdl);
+			}
 		}
 		var httpsPart = '';
 		
