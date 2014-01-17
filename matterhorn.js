@@ -716,6 +716,8 @@ function prepare(config, cb){
 					var html = parts.headerStart + variableScript + parts.javascript + extraJs + parts.headerEnd + /*parts.javascript + extraJs + */parts.footer;
 
 					res.header('Cache-Control', 'no-cache, no-store')
+					res.header('Pragma', 'no-cache')
+					res.header('Expires', '0')
 					//res.send(html, {'Cache-Control': 'no-cache, no-store'}, 200);
 					res.send(html, 200);
 				}
