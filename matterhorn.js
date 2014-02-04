@@ -818,22 +818,6 @@ function prepare(config, cb){
 
 			return args[0];
 		}
-		
-		/*wrapper.error(function(err, req, res, next){
-			if (err instanceof NotFound) {
-				res.render('404.jade');
-			} else {
-				next(err);
-			}
-		});*/
-		wrapper.use(function(err, req, res, next) { 
-			if (err.message.indexOf('NotFound') !== -1) {
-				console.log('404: ' + req.url)
-				res.render('404.jade');
-			}else{
-				next(err)
-			}
-		})
 	
 		wrapper.post = function(path){
 			_.assertString(path)
