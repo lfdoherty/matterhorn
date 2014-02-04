@@ -778,7 +778,7 @@ function prepare(config, cb){
 			_.assertString(path)
 	
 			path = wrapper.getSilent.apply(undefined, arguments);
-			//console.log(config.port + ' ' + (wrapper.isSecure ? 'https ' : 'http ') + colourize(app.name, cyan) + ' get ' + colourize(path, green));
+			console.log(config.port + ' ' + (wrapper.isSecure ? 'https ' : 'http ') + ' get ' + colourize(path, green));
 			
 			alog(appName,'get',  (wrapper.isSecure ? config.securePort : config.port) + ' ' + (wrapper.isSecure ? 'https' : 'http') + ' get ' + path);
 		}
