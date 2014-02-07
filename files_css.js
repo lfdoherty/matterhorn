@@ -41,7 +41,7 @@ function extractCssRequires(cssContent){
 	var lines = cssContent.split('\n');
 	for(var i=0;i<lines.length;++i){
 		var line = lines[i];
-		if(line.indexOf(CssImportsPrefix) === 0){
+		if(line.indexOf(CssImportsPrefix) === 0 && line.indexOf('url(') === -1){
 
 			var requirements = line.substr(CssImportsPrefix.length).split(' ');
 			_.each(requirements, function(req){
@@ -60,7 +60,7 @@ function cleanStylusContent(content){
 	var lines = content.split('\n');
 	for(var i=0;i<lines.length;++i){
 		var line = lines[i];
-		if(line.indexOf(CssImportsPrefix) === 0){
+		if(line.indexOf(CssImportsPrefix) === 0 && line.indexOf('url(') === -1){
 			lines.splice(i, 1);
 			--i;
 		}
@@ -191,8 +191,14 @@ var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, im
 		
 			requirements.forEach(function(req){
 
-				var r = reqs.resolve(app, req, 'css', log, pathModule.dirname(path), path)
-
+				try{
+					var r = reqs.resolve(app, req, 'css', log, pathModule.dirname(path), path)
+				}catch(e){
+					console.log(e)
+					reqCdl()
+					return
+				}
+				
 				loadAndWrapCss(r.name, r.module,  hostFile, unhostFile, imageryFunction, log, function(rm, km){
 					Object.keys(km.included).forEach(function(url){includedUrls[url] = true;})
 					reqCdl()
