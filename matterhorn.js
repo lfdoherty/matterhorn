@@ -11,7 +11,7 @@ var _ = require('underscorem');
 var uglify = require('uglify-js');
 var stylus = require('stylus');
 
-//var browserify = require('browserify');
+var browserify = require('browserify');
 var watchify = require('watchify')
 //var tagify = require('tagify');
 var ignoreit = require('ignoreit')
@@ -464,11 +464,19 @@ function prepare(config, cb){
 				//	throw new Error('TODO')
 				//}
 			}
-			var b = watchify(resolved, opts)
-			b.transform(ignoreit)
-			b.on('update', function (ids){
-				buildBundle()
-			})
+			if(config.watchForChanges){
+				var b = watchify(resolved, opts)
+				b.transform(ignoreit)
+				b.on('update', function (ids){
+					buildBundle()
+				})
+			}else{
+				var b = browserify(resolved, opts)
+				b.transform(ignoreit)
+				//b.on('update', function (ids){
+				//	buildBundle()
+				//})
+			}
 			
 			function buildBundle(){
 				//b.register(ignorify);
