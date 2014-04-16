@@ -1,6 +1,6 @@
 {
   "name": "matterhorn",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "Formalizes a way of building web applications atop the express framework.",
   "author": "Liam Doherty",
   "main": "matterhorn",
