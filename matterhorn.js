@@ -703,7 +703,9 @@ function prepare(config, cb){
 						if(value !== undefined){
 							if(!first) variableScript += ','
 							first = false
-							variableScript += '"' + attr + '": '  + JSON.stringify(value) + '\n';
+							var valueStr = JSON.stringify(value)
+							valueStr = valueStr.replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+							variableScript += '"' + attr + '": '  + valueStr + '\n';
 						}
 					}
 					variableScript += '\n}\n</script>\n';
