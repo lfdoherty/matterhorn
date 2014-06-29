@@ -274,7 +274,7 @@ function prepare(config, cb){
 		hostedZippedContent[url] = gzippedContent;
 		types[url] = type
 		etags[url] = etag
-		console.log('hosting: ' + url)
+		console.log('hosting: ' + url + ' ' + !!content)
 		if(!hosted[url]){
 			hosted[url] = true;
 		}
@@ -376,7 +376,7 @@ function prepare(config, cb){
 
 		var hostedForWrapperYet = {}
 		function hostForWrapper(url){
-			if(url.indexOf('?') !== -1) url = url.substr(0, url.indexOf('?'))
+			//if(url.indexOf('?') !== -1) url = url.substr(0, url.indexOf('?'))
 			if(hostedForWrapperYet[url]) return
 			
 			hostedForWrapperYet[url] = true;
@@ -446,7 +446,7 @@ function prepare(config, cb){
 
 			var name = pathModule.basename(resolved+'.js')
 			
-			var jsUrl = '/static/f/bundle_'+name//+'.js'
+			var jsUrl = '/static/f/:hash/bundle_'+name//+'.js'
 			
 			wrapper.get(jsUrl, function(req, res){
 				function finish(){
@@ -507,7 +507,9 @@ function prepare(config, cb){
 					if(err) throw err
 					//console.log(res.length)//JSON.stringify(res))
 					hash = utilFiles.hashStr(res)
-					fullJsUrl = jsUrl + '?h='+hash
+					
+					//fullJsUrl = jsUrl + '?h='+hash
+					fullJsUrl = '/static/f/'+hash+'/bundle_'+name
 					console.log('bundle url: ' + fullJsUrl)
 					//hostForWrapper(jsUrl)
 				
@@ -603,12 +605,12 @@ function prepare(config, cb){
 				
 				
 				if(pageDef.css){
-					cssFiles.load(app, pageDef.css, hostFile, unhostFile, imageryImportFunction, log, function(err, includeCssFunc){
+					cssFiles.load(app, pageDef.css, hostFile, unhostFile, imageryImportFunction, log, function(err, hostCssFunc, includeCssFunc){
 						if(err) throw err
 						
 						_.assertFunction(includeCssFunc)
 						
-						setTimeout(function(){includeCssFunc().forEach(hostForWrapper)},1000)
+						setTimeout(function(){hostCssFunc().forEach(hostForWrapper)},1000)
 						
 						includeCss = includeCssFunc
 					});

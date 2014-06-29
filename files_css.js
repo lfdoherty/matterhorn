@@ -11,6 +11,7 @@ var reqs = require('./reqs')
 var u = require('./util')
 
 var urlsForCss = {}
+var hostUrlsForCss = {}
 
 //hostFile(url, type, content, gzippedContent)
 //unhostFile(url)
@@ -27,7 +28,13 @@ exports.load = function(app, name, hostFile, unhostFile, imageryFunction, logger
 			return urls;
 		}
 		
-		cb(undefined, includeFunction)
+		function hostUrlsFunction(){
+			var urls = hostUrlsForCss[resolvedName.name];
+			_.assertArray(urls)
+			return urls;
+		}
+		
+		cb(undefined, hostUrlsFunction, includeFunction)
 	})	
 }
 
@@ -140,7 +147,8 @@ var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, im
 			//console.log('read src: ' + cssSrc)
 		
 			var includedUrls = {}
-
+			var includedHostUrls = {}
+			
 			var reqCdl = _.latch(requirements.length, function(){
 
 				var name = pathModule.basename(path)
@@ -155,8 +163,8 @@ var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, im
 						if(err) throw err;*/
 					setImmediate(function(){//TODO remove
 				
-						var headerUrl = '/static/h/'+name + '?h='+hash
-						var hostUrl = '/static/h/'+name// + '?h='+hash
+						var headerUrl = '/static/h/'+hash+'/'+name// + '?h='+hash
+						var hostUrl = '/static/h/:hash/'+name// + '?h='+hash
 						
 						result = {
 							unzipped: changedSource,
@@ -175,12 +183,14 @@ var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, im
 							/*if(oldWrappedCss[path]){
 								unhostFile(oldWrappedCss[path].url);
 							}*/
-							hoster = oldWrappedCss[path] = hostFile(hostUrl, 'css', new Buffer(changedSource), /*data*/undefined, '')
+							hoster = oldWrappedCss[path] = hostFile(hostUrl, 'css', new Buffer(changedSource), undefined, '')
 						}
 
 						includedUrls[result.url] = true
+						includedHostUrls[hostUrl] = true
 						//console.log('set urlsForCss: ' + path + ' ' + JSON.stringify(includedUrls))
 						urlsForCss[path] = Object.keys(includedUrls)
+						hostUrlsForCss[path] = Object.keys(includedHostUrls)
 
 						//oldWrappedCss[path] = result
 					
