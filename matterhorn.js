@@ -116,7 +116,7 @@ function serveFile(req, res, type, content, gzippedContent, etag){
 		res.header('Expires', 'Sat, 28 Apr 2100 10:00:00 GMT')
 		res.header('Content-Type', getMimeType(type) + ';charset=utf-8')
 
-		res.header('ETag', etag)
+		//res.header('ETag', etag)
 		
 		var fileContents;
 
@@ -274,7 +274,7 @@ function prepare(config, cb){
 		hostedZippedContent[url] = gzippedContent;
 		types[url] = type
 		etags[url] = etag
-		console.log('hosting: ' + url + ' ' + !!content)
+		//console.log('hosting: ' + url + ' ' + !!content)
 		if(!hosted[url]){
 			hosted[url] = true;
 		}
@@ -381,7 +381,7 @@ function prepare(config, cb){
 			
 			hostedForWrapperYet[url] = true;
 			
-			console.log('hosting url(' + wrapper.isSecure+'): ' + url)
+			//console.log('hosting url(' + wrapper.isSecure+'): ' + url)
 			//console.log(JSON.stringify(Object.keys(hostedContent)))
 
 			wrapper.get(url, function(req, res){

@@ -170,7 +170,8 @@ var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, im
 							unzipped: changedSource,
 							//zipped: data,
 							url: headerUrl,//'/static/'+hash+'/'+name,
-							included: includedUrls
+							included: includedUrls,
+							includedHost: includedHostUrls
 						}
 					
 						log('loaded ' + path + ' -> ' + result.url)
@@ -211,6 +212,7 @@ var loadAndWrapCss = _.memoizeAsync(function(path, app, hostFile, unhostFile, im
 				
 				loadAndWrapCss(r.name, r.module,  hostFile, unhostFile, imageryFunction, log, function(rm, km){
 					Object.keys(km.included).forEach(function(url){includedUrls[url] = true;})
+					Object.keys(km.includedHost).forEach(function(url){includedHostUrls[url] = true;})
 					reqCdl()
 				})
 
