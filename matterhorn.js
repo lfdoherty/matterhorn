@@ -707,6 +707,8 @@ function prepare(config, cb){
 							first = false
 							var valueStr = JSON.stringify(value)
 							valueStr = valueStr.replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+							valueStr = valueStr.replace(/\>/gi,'&gt;')
+							valueStr = valueStr.replace(/\</gi,'&lt;')
 							variableScript += '"' + attr + '": '  + valueStr + '\n';
 						}
 					}
